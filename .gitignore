@@ -1,0 +1,12 @@
+# Visual Studio / .NET
+.vs/
+bin/
+obj/
+*.user
+*.suo
+TestResults/
+# Bí mật: KHÔNG commit (dùng dotnet user-secrets hoặc biến môi trường)
+appsettings.*.local.json
+appsettings.Production.json
+*.env
+.env*
