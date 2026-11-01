@@ -1,6 +1,103 @@
-@NguyenDuongNhutKhang_APIGAME_HostAddress = http://localhost:5292
+# Game Hub API — chạy từng request trong Visual Studio (nút "Send request").
+# Server: F5 (profile "http") → http://localhost:5292. Swagger: http://localhost:5292/swagger
+# Mật khẩu dưới đây chỉ là giá trị MẪU cho tài khoản demo cục bộ — đổi trước khi dùng, không dùng mật khẩu thật.
 
-GET {{NguyenDuongNhutKhang_APIGAME_HostAddress}}/weatherforecast/
-Accept: application/json
+@host = http://localhost:5292
+@api = {{host}}/api/v1
+@username = demo_user1
+@password = ThayMatKhau123
+
+### Sức khoẻ server + database
+GET {{api}}/health
+
+### Đăng ký (chỉ nhận role User; gửi thêm trường "role" sẽ bị 400)
+# @name register
+POST {{api}}/auth/register
+Content-Type: application/json
+
+{ "username": "{{username}}", "displayName": "Người chơi demo", "password": "{{password}}" }
+
+### Đăng nhập
+# @name login
+POST {{api}}/auth/login
+Content-Type: application/json
+
+{ "username": "{{username}}", "password": "{{password}}" }
+
+### Thông tin của tôi (cần token)
+GET {{api}}/users/me
+Authorization: Bearer {{login.response.body.$.accessToken}}
+
+### Không có token → 401
+GET {{api}}/users/me
+
+### User thường gọi API quản trị → 403
+GET {{api}}/admin/users
+Authorization: Bearer {{login.response.body.$.accessToken}}
+
+### Cập nhật hồ sơ
+PUT {{api}}/users/me
+Authorization: Bearer {{login.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "displayName": "Tên mới", "bio": "Thích Rubik" }
+
+### Làm mới token (refresh token xoay vòng, token cũ hết hiệu lực)
+POST {{api}}/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{login.response.body.$.refreshToken}}" }
+
+### Lưu kết quả Sudoku (gửi lại cùng clientId → 200 duplicate, không lưu trùng)
+POST {{api}}/sudoku/results
+Authorization: Bearer {{login.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "clientId": "demo-sudoku-0001", "mode": "easy", "outcome": "win", "durationMs": 300000, "moves": 50, "errors": 1, "hints": 0 }
+
+### Kết quả không hợp lệ → 400 RESULT_REJECTED
+POST {{api}}/sudoku/results
+Authorization: Bearer {{login.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "clientId": "demo-sudoku-0002", "mode": "easy", "outcome": "draw", "durationMs": 1000 }
+
+### Lịch sử / thống kê
+GET {{api}}/sudoku/history
+Authorization: Bearer {{login.response.body.$.accessToken}}
 
 ###
+GET {{api}}/stats/me?game=sudoku
+Authorization: Bearer {{login.response.body.$.accessToken}}
+
+### Thử thách hằng ngày (ngày tương lai → 400 FUTURE_DATE)
+GET {{api}}/sudoku/daily
+Authorization: Bearer {{login.response.body.$.accessToken}}
+
+### Rubik: scramble do server sinh
+GET {{api}}/rubik/scramble
+Authorization: Bearer {{login.response.body.$.accessToken}}
+
+### Online: vùng ghép trận (thô, không GPS) và bảng xếp hạng online
+GET {{api}}/matchmaking/regions
+
+###
+GET {{api}}/leaderboards/online?game=caro
+
+### Vào hàng chờ ghép trận
+POST {{api}}/matchmaking/queue
+Authorization: Bearer {{login.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "game": "sudoku", "mode": "easy", "region": "VN-S" }
+
+### Rời hàng chờ
+DELETE {{api}}/matchmaking/queue
+Authorization: Bearer {{login.response.body.$.accessToken}}
+
+### Tạo phòng 4 người (mã phòng ở trường roomCode). Đang ở phòng/trận thì không vào hàng chờ được (409 ALREADY_IN_MATCH)
+POST {{api}}/rooms
+Authorization: Bearer {{login.response.body.$.accessToken}}
+Content-Type: application/json
+
+{ "game": "puzzle", "mode": "3x3", "capacity": 4 }
