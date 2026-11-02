@@ -101,3 +101,21 @@ Authorization: Bearer {{login.response.body.$.accessToken}}
 Content-Type: application/json
 
 { "game": "puzzle", "mode": "3x3", "capacity": 4 }
+
+### ===== Endpoint tương thích app Flutter (giống backend Java) =====
+
+### Thách đấu Rubik kiểu cũ — danh sách của tôi
+GET {{api}}/challenges
+Authorization: Bearer {{login.response.body.$.accessToken}}
+
+### Thách đấu đang mở
+GET {{api}}/challenges/open
+Authorization: Bearer {{login.response.body.$.accessToken}}
+
+### Hội thoại chat 1-1
+GET {{api}}/chat/conversations
+Authorization: Bearer {{login.response.body.$.accessToken}}
+
+### Trạng thái online của tôi
+GET {{api}}/presence/me
+Authorization: Bearer {{login.response.body.$.accessToken}}

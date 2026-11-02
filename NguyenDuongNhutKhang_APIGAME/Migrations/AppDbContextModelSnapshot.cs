@@ -365,6 +365,129 @@ namespace NguyenDuongNhutKhang_APIGAME.Migrations
                     b.ToTable("DailyChallenges");
                 });
 
+            modelBuilder.Entity("NguyenDuongNhutKhang_APIGAME.Models.DirectMessage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ClientId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("RecipientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SenderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipientId", "ReadAt");
+
+                    b.HasIndex("SenderId", "ClientId")
+                        .IsUnique()
+                        .HasFilter("[ClientId] IS NOT NULL");
+
+                    b.HasIndex("SenderId", "RecipientId", "Id");
+
+                    b.ToTable("DirectMessages");
+                });
+
+            modelBuilder.Entity("NguyenDuongNhutKhang_APIGAME.Models.DuelChallenge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AllowAssist")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool?>("CreatorAssisted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("CreatorClientId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<long?>("CreatorDurationMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("CreatorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("CreatorMoves")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CreatorSubmittedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool?>("OpponentAssisted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("OpponentClientId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<long?>("OpponentDurationMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("OpponentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("OpponentMoves")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("OpponentSubmittedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Scramble")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<Guid?>("WinnerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatorId", "CreatedAt");
+
+                    b.HasIndex("OpponentId", "CreatedAt");
+
+                    b.HasIndex("Status", "ExpiresAt");
+
+                    b.ToTable("DuelChallenges");
+                });
+
             modelBuilder.Entity("NguyenDuongNhutKhang_APIGAME.Models.Friendship", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1163,6 +1286,39 @@ namespace NguyenDuongNhutKhang_APIGAME.Migrations
                     b.Navigation("MatchRoom");
 
                     b.Navigation("Sender");
+                });
+
+            modelBuilder.Entity("NguyenDuongNhutKhang_APIGAME.Models.DirectMessage", b =>
+                {
+                    b.HasOne("NguyenDuongNhutKhang_APIGAME.Models.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("NguyenDuongNhutKhang_APIGAME.Models.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NguyenDuongNhutKhang_APIGAME.Models.DuelChallenge", b =>
+                {
+                    b.HasOne("NguyenDuongNhutKhang_APIGAME.Models.AppUser", "Creator")
+                        .WithMany()
+                        .HasForeignKey("CreatorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("NguyenDuongNhutKhang_APIGAME.Models.AppUser", "Opponent")
+                        .WithMany()
+                        .HasForeignKey("OpponentId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("Creator");
+
+                    b.Navigation("Opponent");
                 });
 
             modelBuilder.Entity("NguyenDuongNhutKhang_APIGAME.Models.Friendship", b =>

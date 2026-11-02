@@ -14,16 +14,20 @@ public class PresenceTracker(TimeProvider clock)
     private readonly ConcurrentDictionary<Guid, DateTime> _lastSeen = new();
     private readonly ConcurrentDictionary<Guid, Queue<DateTime>> _chat = new();
 
-    public void Connected(Guid user)
+    /// <summary>Trả về <c>true</c> nếu đây là kết nối đầu tiên của người này (vừa chuyển sang online).</summary>
+    public bool Connected(Guid user)
     {
-        _connections.AddOrUpdate(user, 1, (_, n) => n + 1);
+        var n = _connections.AddOrUpdate(user, 1, (_, n) => n + 1);
         Touch(user);
+        return n == 1;
     }
 
-    public void Disconnected(Guid user)
+    /// <summary>Trả về <c>true</c> nếu vừa đóng kết nối cuối cùng của người này.</summary>
+    public bool Disconnected(Guid user)
     {
-        _connections.AddOrUpdate(user, 0, (_, n) => Math.Max(0, n - 1));
+        var n = _connections.AddOrUpdate(user, 0, (_, n) => Math.Max(0, n - 1));
         Touch(user);
+        return n == 0;
     }
 
     public void Touch(Guid user) => _lastSeen[user] = clock.GetUtcNow().UtcDateTime;

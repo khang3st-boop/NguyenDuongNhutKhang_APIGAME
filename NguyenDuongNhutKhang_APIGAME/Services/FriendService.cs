@@ -9,7 +9,8 @@ using NguyenDuongNhutKhang_APIGAME.Repositories;
 namespace NguyenDuongNhutKhang_APIGAME.Services;
 
 /// <summary>Bạn bè, chặn, báo cáo. Người đã chặn nhau không kết bạn / mời / thấy nhau được.</summary>
-public class FriendService(AppDbContext db, OnlineRepository repo, IUserService users, PresenceTracker presence, TimeProvider clock) : IFriendService
+public class FriendService(
+    AppDbContext db, OnlineRepository repo, IUserService users, PresenceTracker presence, RealtimeNotifier notifier, TimeProvider clock) : IFriendService
 {
     private const int MaxReportsPerHour = 10;
 
@@ -68,12 +69,14 @@ public class FriendService(AppDbContext db, OnlineRepository repo, IUserService 
             reverse.RespondedAt = clock.GetUtcNow().UtcDateTime;
             db.Friendships.RemoveRange(existing.Where(f => f != reverse));
             await db.SaveChangesAsync();
+            await notifier.FriendAsync([me, target], "accepted");
             return new FriendRequestResult(FriendStatus.Accepted);
         }
         if (existing.Count > 0) return new FriendRequestResult(FriendStatus.Pending);
 
         db.Friendships.Add(new Friendship { RequesterId = me, AddresseeId = target, CreatedAt = clock.GetUtcNow().UtcDateTime });
         await db.SaveChangesAsync();
+        await notifier.FriendAsync([target], "request");
         return new FriendRequestResult(FriendStatus.Pending);
     }
 
@@ -88,12 +91,14 @@ public class FriendService(AppDbContext db, OnlineRepository repo, IUserService 
         }
         else db.Friendships.Remove(f);
         await db.SaveChangesAsync();
+        if (accept) await notifier.FriendAsync([me, requester], "accepted");
     }
 
     public async Task RemoveAsync(Guid me, Guid other)
     {
         var n = await db.Friendships.Where(f => (f.RequesterId == me && f.AddresseeId == other) || (f.RequesterId == other && f.AddresseeId == me)).ExecuteDeleteAsync();
         if (n == 0) throw AppException.NotFound("Hai bạn chưa là bạn bè.");
+        await notifier.FriendAsync([me, other], "removed");
     }
 
     public async Task BlockAsync(Guid me, Guid target)
@@ -132,7 +137,7 @@ public class FriendService(AppDbContext db, OnlineRepository repo, IUserService 
 }
 
 /// <summary>Sảnh "Cho phép mời đấu": chỉ người tự bật mới xuất hiện; hết hạn sau 10 phút không làm mới.</summary>
-public class LobbyService(AppDbContext db, OnlineRepository repo, IUserService users, TimeProvider clock) : ILobbyService
+public class LobbyService(AppDbContext db, OnlineRepository repo, IUserService users, RealtimeNotifier notifier, TimeProvider clock) : ILobbyService
 {
     public static readonly TimeSpan Ttl = TimeSpan.FromMinutes(10);
 
@@ -158,10 +163,15 @@ public class LobbyService(AppDbContext db, OnlineRepository repo, IUserService u
         p.ShowStats = req.ShowStats;
         p.LastSeenAt = clock.GetUtcNow().UtcDateTime;
         await db.SaveChangesAsync();
+        await notifier.LobbyUpdatedAsync();
         return ToEntry(p);
     }
 
-    public async Task LeaveAsync(Guid me) => await db.PlayerPresences.Where(p => p.UserId == me).ExecuteDeleteAsync();
+    public async Task LeaveAsync(Guid me)
+    {
+        await db.PlayerPresences.Where(p => p.UserId == me).ExecuteDeleteAsync();
+        await notifier.LobbyUpdatedAsync();
+    }
 
     public async Task<List<LobbyPlayerDto>> ListAsync(Guid me, string? game, string? region, int? capacity, bool readyOnly)
     {

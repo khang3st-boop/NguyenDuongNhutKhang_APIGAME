@@ -43,6 +43,16 @@ public static class FriendStatus
     public const string Accepted = "ACCEPTED";
 }
 
+/// <summary>Trạng thái thách đấu Rubik bất đồng bộ — đúng chuỗi app Flutter đang hiển thị.</summary>
+public static class DuelStatus
+{
+    public const string Open = "OPEN";
+    public const string Accepted = "ACCEPTED";
+    public const string Completed = "COMPLETED";
+    public const string Declined = "DECLINED";
+    public const string Expired = "EXPIRED";
+}
+
 public static class InviteStatus
 {
     public const string Pending = "PENDING";

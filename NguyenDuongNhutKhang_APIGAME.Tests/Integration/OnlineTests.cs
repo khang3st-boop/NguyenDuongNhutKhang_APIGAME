@@ -27,6 +27,65 @@ internal static class Online
     public static string Inverse(string scramble) => string.Join(' ', scramble.Split(' ', StringSplitOptions.RemoveEmptyEntries)
         .Reverse().Select(m => m.EndsWith('\'') ? m[..1] : m.EndsWith('2') ? m : m + "'"));
 
+    public static HubConnection Hub(ApiFactory api, TestUser user, EventSink sink)
+    {
+        var hub = new HubConnectionBuilder()
+            .WithUrl(new Uri(api.Server.BaseAddress, "/hubs/game"), o =>
+            {
+                o.Transports = HttpTransportType.LongPolling;
+                o.HttpMessageHandlerFactory = _ => api.Server.CreateHandler();
+                o.AccessTokenProvider = () => Task.FromResult<string?>(user.AccessToken);
+            })
+            .Build();
+        hub.On<JsonElement>("event", sink.Add);
+        return hub;
+    }
+
+    /// <summary>Gom sự kiện <c>event</c> của hub; chờ theo <c>type</c>.</summary>
+    public sealed class EventSink
+    {
+        private readonly List<JsonElement> _seen = [];
+        private readonly List<(string Type, TaskCompletionSource<JsonElement> Tcs)> _waiters = [];
+
+        public void Add(JsonElement e)
+        {
+            var type = e.GetProperty("type").GetString()!;
+            lock (_seen)
+            {
+                // Đã có người chờ → giao luôn, không giữ lại (cùng ngữ nghĩa "lấy ra" như WaitAsync).
+                var waiters = _waiters.Where(w => w.Type == type).ToList();
+                if (waiters.Count == 0) _seen.Add(e.Clone());
+                foreach (var w in waiters)
+                {
+                    _waiters.Remove(w);
+                    w.Tcs.TrySetResult(e.Clone());
+                }
+            }
+        }
+
+        public bool Seen(string type)
+        {
+            lock (_seen) return _seen.Any(e => e.GetProperty("type").GetString() == type);
+        }
+
+        public Task<JsonElement> WaitAsync(string type, int seconds = 10)
+        {
+            var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_seen)
+            {
+                var hit = _seen.FindIndex(e => e.GetProperty("type").GetString() == type);
+                if (hit >= 0)
+                {
+                    var e = _seen[hit];
+                    _seen.RemoveAt(hit);
+                    return Task.FromResult(e);
+                }
+                _waiters.Add((type, tcs));
+            }
+            return tcs.Task.WaitAsync(TimeSpan.FromSeconds(seconds));
+        }
+    }
+
     /// <summary>Tạo trận caro qua lời mời và đưa về PLAYING (tua đồng hồ giả qua 3 giây đếm ngược).</summary>
     public static async Task<(string Id, TestUser X, TestUser O)> StartCaroAsync(ApiFactory api, TestUser a, TestUser b)
     {
@@ -212,28 +271,29 @@ public class OnlineTests(ApiFactory api)
         var anon = await api.CreateClient().PostAsync("/hubs/game/negotiate?negotiateVersion=1", null);
         Assert.Equal(HttpStatusCode.Unauthorized, anon.StatusCode);
 
-        var invite = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var state = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var hub = new HubConnectionBuilder()
-            .WithUrl(new Uri(api.Server.BaseAddress, "/hubs/game"), o =>
-            {
-                o.Transports = HttpTransportType.LongPolling;
-                o.HttpMessageHandlerFactory = _ => api.Server.CreateHandler();
-                o.AccessTokenProvider = () => Task.FromResult<string?>(b.AccessToken);
-            })
-            .Build();
-        hub.On<JsonElement>("inviteReceived", e => invite.TrySetResult(e));
-        hub.On<JsonElement>("matchState", e => state.TrySetResult(e));
+        var events = new Online.EventSink();
+        await using var hub = Online.Hub(api, b, events);
         await hub.StartAsync();
         Assert.True((await hub.InvokeAsync<DateTime>("Ping")) > DateTime.MinValue);
 
         var inv = await a.Post("/api/v1/challenges/invites", new { userId = b.Id, game = "rubik", mode = "3x3" }).Ok();
-        var got = await invite.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(inv.Str("id"), got.GetProperty("id").GetString());
+        // Phong bì giống server Java: {type, data, matchId, ts}.
+        var got = await events.WaitAsync("invite.received");
+        Assert.Equal(inv.Str("id"), got.GetProperty("data").GetProperty("id").GetString());
+        Assert.True(got.GetProperty("ts").GetDateTime() > DateTime.MinValue);
 
         await b.Post($"/api/v1/challenges/invites/{inv.Str("id")}/accept").Ok();
-        var ms = await state.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var created = await events.WaitAsync("match.created");
+        var ms = created.GetProperty("data");
         Assert.Equal("WAITING_READY", ms.GetProperty("status").GetString());
+        Assert.Equal(ms.GetProperty("id").GetString(), created.GetProperty("matchId").GetString());
+        Assert.Equal("ACCEPTED", (await events.WaitAsync("invite.accepted")).GetProperty("data").Str("status"));
+
+        // Sẵn sàng qua hub (app Flutter gửi match.ready) → match.state.
+        var matchId = Guid.Parse(ms.GetProperty("id").GetString()!);
+        var ready = await hub.InvokeAsync<JsonElement>("Ready", matchId, true);
+        Assert.Contains(ready.GetProperty("players").EnumerateArray(), p => p.GetProperty("ready").GetBoolean());
+        await events.WaitAsync("match.state");
 
         // Gửi chat qua hub; lỗi nghiệp vụ trả HubException có mã.
         var msg = await hub.InvokeAsync<JsonElement>("SendChat", Guid.Parse(ms.GetProperty("id").GetString()!), "xin chào", "hub-1");
@@ -294,5 +354,49 @@ public class TimeoutTests : IAsyncLifetime
         var closed = await x.Post($"/api/v1/matches/{caro}/messages", new { text = "gg" });
         Assert.Equal(HttpStatusCode.Conflict, closed.StatusCode);
         Assert.Equal("CHAT_CLOSED", (await closed.JsonAsync()).Str("code"));
+    }
+
+    [Fact]
+    public async Task Countdown_end_pushes_playing_and_decline_only_notifies_inviter()
+    {
+        var a = await api.RegisterAsync("cd_a");
+        var b = await api.RegisterAsync("cd_b");
+        var ea = new Online.EventSink();
+        var eb = new Online.EventSink();
+        await using var ha = Online.Hub(api, a, ea);
+        await using var hb = Online.Hub(api, b, eb);
+        await ha.StartAsync();
+        await hb.StartAsync();
+
+        // Từ chối: chỉ người mời nhận invite.declined.
+        var inv = await a.Post("/api/v1/challenges/invites", new { userId = b.Id, game = "rubik", mode = "3x3" }).Ok();
+        await eb.WaitAsync("invite.received");
+        await b.Post($"/api/v1/challenges/invites/{inv.Str("id")}/decline").Ok();
+        await ea.WaitAsync("invite.declined");
+
+        // Mời lại → chấp nhận → cả hai sẵn sàng → COUNTDOWN.
+        var inv2 = await a.Post("/api/v1/challenges/invites", new { userId = b.Id, game = "rubik", mode = "3x3" }).Ok();
+        await eb.WaitAsync("invite.received");
+        Assert.False(eb.Seen("invite.declined"));
+        var id = (await b.Post($"/api/v1/challenges/invites/{inv2.Str("id")}/accept").Ok()).Str("matchId");
+        await a.Post($"/api/v1/matches/{id}/ready").Ok();
+        Assert.Equal("COUNTDOWN", (await b.Post($"/api/v1/matches/{id}/ready").Ok()).Str("status"));
+        await TickAsync(); // nhịp trong lúc đếm ngược: chưa báo PLAYING
+
+        // Hết đếm ngược → nhịp dọn dẹp đẩy match.state PLAYING cho cả hai.
+        api.Clock.Advance(TimeSpan.FromSeconds(3.5));
+        await TickAsync();
+        foreach (var sink in new[] { ea, eb })
+        {
+            JsonElement ev;
+            do ev = await sink.WaitAsync("match.state");
+            while (ev.GetProperty("data").Str("status") != "PLAYING");
+            Assert.Equal(id, ev.GetProperty("matchId").GetString());
+        }
+
+        // Nhịp sau không báo lại.
+        await TickAsync();
+        await Task.Delay(300);
+        Assert.False(ea.Seen("match.state"));
     }
 }

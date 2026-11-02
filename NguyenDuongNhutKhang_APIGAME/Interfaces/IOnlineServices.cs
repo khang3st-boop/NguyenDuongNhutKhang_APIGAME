@@ -5,6 +5,8 @@ namespace NguyenDuongNhutKhang_APIGAME.Interfaces;
 public interface IFriendService
 {
     Task<List<FriendDto>> FriendsAsync(Guid me);
+    /// <summary>Trạng thái do server tính: IN_MATCH &gt; READY &gt; ONLINE &gt; OFFLINE.</summary>
+    Task<Dictionary<Guid, string>> StatusesAsync(IReadOnlyCollection<Guid> ids);
     Task<FriendRequestsResponse> RequestsAsync(Guid me);
     Task<FriendRequestResult> SendRequestAsync(Guid me, Guid target);
     Task RespondAsync(Guid me, Guid requester, bool accept);

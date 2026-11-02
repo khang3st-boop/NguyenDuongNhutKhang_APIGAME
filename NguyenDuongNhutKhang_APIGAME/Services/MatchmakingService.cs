@@ -12,7 +12,9 @@ namespace NguyenDuongNhutKhang_APIGAME.Services;
 /// Ghép nhanh 2 người theo game + chế độ + khu vực thô (người chơi tự chọn, không GPS).
 /// Cùng khu vực ghép ngay; bật <c>widen</c>: sau 10 giây mở sang vùng lân cận, sau 30 giây (cả hai bật) mở mọi vùng.
 /// </summary>
-public class MatchmakingService(AppDbContext db, OnlineRepository repo, MatchService matches, TimeProvider clock, ILogger<MatchmakingService> logger) : IMatchmakingService
+public class MatchmakingService(
+    AppDbContext db, OnlineRepository repo, MatchService matches, RealtimeNotifier notifier, TimeProvider clock, ILogger<MatchmakingService> logger)
+    : IMatchmakingService
 {
     public static readonly TimeSpan TicketLifetime = TimeSpan.FromMinutes(5);
     public static readonly TimeSpan NeighbourAfter = TimeSpan.FromSeconds(10);
@@ -86,7 +88,7 @@ public class MatchmakingService(AppDbContext db, OnlineRepository repo, MatchSer
                     await db.MatchmakingTickets.Where(t => t.UserId == a.UserId || t.UserId == b.UserId).ExecuteDeleteAsync();
                     used.Add(a.UserId);
                     used.Add(b.UserId);
-                    await matches.PublishAsync(room);
+                    await notifier.MatchFoundAsync(await matches.ToDtoAsync(room));
                     logger.LogInformation("Ghép trận {Game}/{Mode} {MatchId}", a.Game, a.Mode, room.Id);
                     break;
                 }

@@ -6,7 +6,7 @@ backend Java Spring Boot đang chạy trên Render. Frontend vẫn là Flutter.
 - Solution: `NguyenDuongNhutKhang_APIGAME.slnx`
 - API: `NguyenDuongNhutKhang_APIGAME/` — Controllers → Services → Repositories → EF Core (SQL Server)
 - Test: `NguyenDuongNhutKhang_APIGAME.Tests/` — xUnit, unit + integration trên SQL Server LocalDB thật
-- Tài liệu: `Docs/API_Contract_Diff.md` (so sánh với Flutter/Java), `Docs/Deploy_Plan.md`
+- Tài liệu: `Docs/API_Contract_Diff.md` (so sánh với Flutter/Java), `Docs/Deploy_Plan.md`, `Docs/Flutter_Integration_Guide.md` (chạy app Flutter với .NET)
 
 ## 1. Chạy bằng Visual Studio (F5)
 
@@ -79,7 +79,9 @@ File `NguyenDuongNhutKhang_APIGAME/NguyenDuongNhutKhang_APIGAME.http` chứa chu
   trạng thái WAITING_READY → COUNTDOWN → PLAYING → FINISHED/CANCELLED do server điều khiển (hết giờ sẵn sàng,
   hết giờ lượt Caro 30s), chat có lọc ký tự, chống trùng, giới hạn tần suất, chặn và báo cáo.
 - **Realtime**: SignalR hub `/hubs/game` (token qua header hoặc `?access_token=`).
-  Server → client: `inviteReceived`, `inviteUpdated`, `matchState`, `chatMessage`. Client → server: `Ping`, `SendChat`.
+  Server → client: một method `event` với khung `{type, data, matchId, ts}`, tên sự kiện giống backend Java
+  (`invite.received`, `match.state`, ...). Client → server: `Ready`, `Progress`, `Assist`, `SendChat`.
+  App Flutter chọn backend bằng `--dart-define=GAMEHUB_BACKEND=java|dotnet` (mặc định `java`) — xem `Docs/API_Contract_Diff.md` mục 3, 5, 6.
 
 ## 5. Kịch bản demo (≈10 phút)
 

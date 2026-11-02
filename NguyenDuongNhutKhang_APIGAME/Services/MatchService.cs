@@ -18,7 +18,7 @@ namespace NguyenDuongNhutKhang_APIGAME.Services;
 /// </summary>
 public class MatchService(
     AppDbContext db, OnlineRepository repo, IUserService users, PresenceTracker presence,
-    RealtimeNotifier notifier, TimeProvider clock, ILogger<MatchService> logger) : IMatchService
+    RealtimeNotifier notifier, MatchTickState tickState, TimeProvider clock, ILogger<MatchService> logger) : IMatchService
 {
     public static readonly TimeSpan ReadyWindow = TimeSpan.FromSeconds(60);
     public static readonly TimeSpan Countdown = TimeSpan.FromSeconds(3);
@@ -252,9 +252,12 @@ public class MatchService(
         }));
 
     /// <summary>Bỏ cuộc khi đang chơi; khi còn chờ thì rời phòng (chủ phòng rời / trận mời → huỷ).</summary>
-    public async Task<OnlineMatchDto> ForfeitAsync(Guid me, Guid id) =>
-        await PublishAsync(await MutateAsync(id, me, (room, p, now) =>
+    public async Task<OnlineMatchDto> ForfeitAsync(Guid me, Guid id)
+    {
+        var left = false;
+        var dto = await PublishAsync(await MutateAsync(id, me, (room, p, now) =>
         {
+            left = false;
             if (!MatchStatus.IsActive(room.Status)) return false;
             if (room.Status == MatchStatus.Waiting)
             {
@@ -268,6 +271,7 @@ public class MatchService(
                     room.Participants.Remove(p);
                     db.MatchParticipants.Remove(p);
                     room.ReadyDeadline = null;
+                    left = true;
                 }
                 return true;
             }
@@ -281,6 +285,10 @@ public class MatchService(
             else EndIfDecided(room, now, EndReasons.Forfeit);
             return true;
         }));
+        // Người rời phòng chờ không còn trong danh sách người chơi → báo riêng cho họ.
+        if (left) await notifier.MatchLeftAsync(me, dto);
+        return dto;
+    }
 
     // ================================================================== kết thúc / xếp hạng
 
@@ -379,6 +387,22 @@ public class MatchService(
         var due = playing.Where(r => (r.TurnDeadline != null && r.TurnDeadline < now) || r.StartedAt + OnlineModes.TimeLimit(r.Game, r.Mode) < now)
             .Select(r => r.Id).Take(50);
 
+        // Hết đếm ngược → báo PLAYING cho client (app chỉ đổi màn hình khi nhận match.state).
+        var since = new DateTime(Interlocked.Exchange(ref tickState.LastTickTicks, now.Ticks), DateTimeKind.Utc);
+        if (since == DateTime.MinValue || since > now) since = now - Countdown - TimeSpan.FromSeconds(2);
+        foreach (var r in playing.Where(r => r.StartedAt > since && r.StartedAt <= now))
+        {
+            try
+            {
+                var room = await LoadAsync(r.Id, noTracking: true);
+                if (room?.Status == MatchStatus.Playing) await PublishAsync(room);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Không báo được bắt đầu trận {MatchId}", r.Id);
+            }
+        }
+
         foreach (var id in waiting.Concat(due))
         {
             ct.ThrowIfCancellationRequested();
@@ -462,10 +486,10 @@ public class MatchService(
         }
     }
 
-    internal async Task<OnlineMatchDto> PublishAsync(MatchRoom room)
+    internal async Task<OnlineMatchDto> PublishAsync(MatchRoom room, string? type = null)
     {
         var dto = await ToDtoAsync(room);
-        await notifier.MatchAsync(dto);
+        await notifier.MatchAsync(dto, type);
         return dto;
     }
 
@@ -512,4 +536,10 @@ public class MatchService(
         return rows.Where(r => summaries.ContainsKey(r.UserId))
             .Select((r, i) => new OnlineRankEntryDto(i + 1, summaries[r.UserId], r.Rating, r.Played, r.Wins)).ToList();
     }
+}
+
+/// <summary>Thời điểm nhịp dọn dẹp trước (ticks) — singleton theo ứng dụng để báo bắt đầu trận đúng một lần.</summary>
+public sealed class MatchTickState
+{
+    public long LastTickTicks;
 }

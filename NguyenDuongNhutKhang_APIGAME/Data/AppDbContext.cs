@@ -31,6 +31,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<MatchResult> MatchResults => Set<MatchResult>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<MatchmakingTicket> MatchmakingTickets => Set<MatchmakingTicket>();
+    public DbSet<DuelChallenge> DuelChallenges => Set<DuelChallenge>();
+    public DbSet<DirectMessage> DirectMessages => Set<DirectMessage>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder b)
     {
@@ -245,6 +247,33 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
             e.Property(t => t.Region).HasMaxLength(8);
             e.HasIndex(t => new { t.Game, t.Mode, t.MatchRoomId });
             e.HasOne<AppUser>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ---- Tương thích app Flutter: thách đấu Rubik bất đồng bộ, chat 1-1 ----
+        b.Entity<DuelChallenge>(e =>
+        {
+            e.Property(c => c.Scramble).HasMaxLength(200);
+            e.Property(c => c.Message).HasMaxLength(100);
+            e.Property(c => c.Status).HasMaxLength(16);
+            e.Property(c => c.CreatorClientId).HasMaxLength(64);
+            e.Property(c => c.OpponentClientId).HasMaxLength(64);
+            e.HasIndex(c => new { c.CreatorId, c.CreatedAt });
+            e.HasIndex(c => new { c.OpponentId, c.CreatedAt });
+            e.HasIndex(c => new { c.Status, c.ExpiresAt });
+            e.HasOne(c => c.Creator).WithMany().HasForeignKey(c => c.CreatorId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(c => c.Opponent).WithMany().HasForeignKey(c => c.OpponentId).OnDelete(DeleteBehavior.NoAction);
+        });
+
+        b.Entity<DirectMessage>(e =>
+        {
+            e.Property(m => m.Text).HasMaxLength(500);
+            e.Property(m => m.ClientId).HasMaxLength(64);
+            e.HasIndex(m => new { m.SenderId, m.RecipientId, m.Id });
+            e.HasIndex(m => new { m.RecipientId, m.ReadAt });
+            // Gửi lại cùng clientId (mạng chập chờn) không tạo bản trùng.
+            e.HasIndex(m => new { m.SenderId, m.ClientId }).IsUnique().HasFilter("[ClientId] IS NOT NULL");
+            e.HasOne<AppUser>().WithMany().HasForeignKey(m => m.SenderId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<AppUser>().WithMany().HasForeignKey(m => m.RecipientId).OnDelete(DeleteBehavior.NoAction);
         });
     }
 }

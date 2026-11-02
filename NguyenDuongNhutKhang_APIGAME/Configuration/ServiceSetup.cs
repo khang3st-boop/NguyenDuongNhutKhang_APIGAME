@@ -24,6 +24,7 @@ public static class ServiceSetup
         services.AddScoped<OnlineRepository>();
         services.AddScoped<IFriendService, FriendService>();
         services.AddScoped<ILobbyService, LobbyService>();
+        services.AddSingleton<MatchTickState>();
         services.AddScoped<MatchService>();
         services.AddScoped<IMatchService>(sp => sp.GetRequiredService<MatchService>());
         services.AddScoped<InviteService>();
@@ -31,6 +32,11 @@ public static class ServiceSetup
         services.AddScoped<MatchmakingService>();
         services.AddScoped<IMatchmakingService>(sp => sp.GetRequiredService<MatchmakingService>());
         services.AddScoped<IChatService, ChatService>();
+
+        // Tương thích app Flutter (giống backend Java): /challenges, /chat/conversations, /presence/me, /reports
+        services.AddScoped<PresenceService>();
+        services.AddScoped<DuelService>();
+        services.AddScoped<DirectChatService>();
         services.AddHostedService<HousekeepingService>();
 
         services.AddSignalR(o =>

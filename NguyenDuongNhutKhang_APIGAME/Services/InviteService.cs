@@ -85,6 +85,7 @@ public class InviteService(
         if (claimed == 0) throw AppException.Conflict("Lời mời vừa được xử lý ở nơi khác.", "INVITE_CLOSED");
 
         MatchRoom room;
+        var created = false;
         try
         {
             if (invite.MatchRoomId is { } roomId) room = await matches.JoinAsync(me, roomId);
@@ -94,6 +95,7 @@ public class InviteService(
                 if (await repo.ActiveMatchIdAsync(invite.FromUserId) != null)
                     throw AppException.Conflict("Người mời đang ở trong trận khác.", "TARGET_BUSY");
                 room = await matches.NewMatchAsync(invite.Game, invite.Mode, 2, MatchSource.Invite, [invite.FromUserId, me]);
+                created = true;
             }
         }
         catch
@@ -109,7 +111,7 @@ public class InviteService(
         invite.MatchRoomId = room.Id;
         var dto = (await ToDtosAsync([invite]))[0];
         await notifier.InviteUpdatedAsync(dto);
-        await matches.PublishAsync(room);
+        await matches.PublishAsync(room, created ? "match.created" : null);
         return dto;
     }
 
@@ -130,12 +132,26 @@ public class InviteService(
         return dto;
     }
 
-    /// <summary>Đánh dấu EXPIRED cho lời mời quá 60 giây (dịch vụ nền gọi).</summary>
-    internal Task<int> ExpireAsync(CancellationToken ct)
+    /// <summary>Đánh dấu EXPIRED cho lời mời quá 60 giây (dịch vụ nền gọi) và báo <c>invite.expired</c> cho hai bên.</summary>
+    internal async Task<int> ExpireAsync(CancellationToken ct)
     {
         var now = Now;
-        return db.Challenges.Where(c => c.Status == InviteStatus.Pending && c.ExpiresAt <= now)
-            .ExecuteUpdateAsync(s => s.SetProperty(c => c.Status, InviteStatus.Expired).SetProperty(c => c.RespondedAt, now), ct);
+        var due = await db.Challenges.AsNoTracking().Where(c => c.Status == InviteStatus.Pending && c.ExpiresAt <= now)
+            .OrderBy(c => c.ExpiresAt).Take(100).ToListAsync(ct);
+        var expired = new List<Challenge>();
+        foreach (var c in due)
+        {
+            // Điều kiện PENDING: lời mời vừa được chấp nhận / từ chối ở nơi khác thì không ghi đè.
+            var n = await db.Challenges.Where(x => x.Id == c.Id && x.Status == InviteStatus.Pending)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, InviteStatus.Expired).SetProperty(x => x.RespondedAt, now), ct);
+            if (n == 0) continue;
+            c.Status = InviteStatus.Expired;
+            c.RespondedAt = now;
+            expired.Add(c);
+        }
+        if (expired.Count > 0)
+            foreach (var dto in await ToDtosAsync(expired)) await notifier.InviteUpdatedAsync(dto);
+        return expired.Count;
     }
 
     private async Task<List<InviteDto>> ToDtosAsync(List<Challenge> rows)
