@@ -160,6 +160,14 @@ public class GameResultService(AppDbContext db, GameResultRepository repo, TimeP
                 return Reject("Lời giải Sudoku không khớp đề bài.");
         }
 
+        // Xếp hình NxN: số lần thả = số mảnh − gợi ý + thả sai (như server Java cũ).
+        if (win && game == GameIds.Puzzle && ScoreCalculator.PuzzlePieces(input.Mode.Trim()) is { } pieces)
+        {
+            if (Int(details, "pieces") is { } p && p != pieces) return Reject("Số mảnh không khớp với cấp độ.");
+            if (input.Hints > pieces) return Reject("Số gợi ý không hợp lệ.");
+            if (input.Moves != pieces - input.Hints + input.Errors) return Reject("Số lần thả mảnh không khớp.");
+        }
+
         var plausible = !win || input.DurationMs >= MinWinMs[game!];
         if (!plausible) note = "Thời gian quá ngắn — đã lưu nhưng không tính xếp hạng.";
         var rankable = !assisted && plausible && (win || game == GameIds.Caro);
@@ -182,7 +190,9 @@ public class GameResultService(AppDbContext db, GameResultRepository repo, TimeP
         return new Prepared(new GameResult
         {
             UserId = userId, ClientId = input.ClientId, Game = game!, Mode = input.Mode.Trim(), Outcome = input.Outcome,
-            Score = ScoreCalculator.Compute(game!, input.Outcome, input.DurationMs, input.Moves, input.Errors, input.Hints),
+            Score = ScoreCalculator.Compute(game!, input.Mode.Trim(), input.Outcome, input.DurationMs, input.Moves,
+                input.Errors, input.Hints, details?["autoSolve"]?.GetValueKind() == JsonValueKind.True,
+                Int(details, "pieces")),
             DurationMs = input.DurationMs, Moves = input.Moves, Errors = input.Errors, Hints = input.Hints,
             Assisted = assisted, Rankable = rankable, DailyDate = daily, ChallengeCode = code,
             DetailsJson = detailsJson, PlayedAt = playedAt, ReceivedAt = now,
@@ -293,6 +303,9 @@ public class GameResultService(AppDbContext db, GameResultRepository repo, TimeP
 
     private static string? Str(JsonObject? o, string key) =>
         o?[key] is JsonValue v && v.GetValueKind() == JsonValueKind.String ? v.GetValue<string>() : null;
+
+    private static int? Int(JsonObject? o, string key) =>
+        o?[key] is JsonValue v && v.GetValueKind() == JsonValueKind.Number && v.TryGetValue<int>(out var n) ? n : null;
 
     internal static bool IsUniqueViolation(DbUpdateException ex) =>
         DatabaseErrors.IsUniqueViolation(ex);

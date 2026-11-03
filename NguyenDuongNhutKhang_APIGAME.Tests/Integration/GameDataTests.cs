@@ -37,6 +37,28 @@ public class GameDataTests(ApiFactory api)
     }
 
     [Fact]
+    public async Task Puzzle_score_matches_client_and_wrong_drop_count_is_rejected()
+    {
+        var u = await api.RegisterAsync("pz");
+        // Ván 3×3 như app gửi: 9 lần thả, không sai, không gợi ý, 42 giây → 500 + 30·9 − 42.
+        var ok = await u.Client.PostAsJsonAsync("/api/v1/results", new
+        {
+            clientId = ClientId(), game = "puzzle", mode = "3x3", outcome = "win", durationMs = 42_000,
+            moves = 9, errors = 0, hints = 0, details = new { pieces = 9, image = "sunset" },
+        });
+        Assert.Equal(HttpStatusCode.Created, ok.StatusCode);
+        Assert.Equal(728, (await ok.JsonAsync()).GetProperty("result").GetProperty("score").GetInt32());
+
+        var bad = await u.Client.PostAsJsonAsync("/api/v1/results", new
+        {
+            clientId = ClientId(), game = "puzzle", mode = "3x3", outcome = "win", durationMs = 42_000,
+            moves = 3, details = new { pieces = 9 },
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        Assert.Equal("RESULT_REJECTED", (await bad.JsonAsync()).Str("code"));
+    }
+
+    [Fact]
     public async Task Invalid_results_are_rejected_with_reason()
     {
         var u = await api.RegisterAsync("bad");

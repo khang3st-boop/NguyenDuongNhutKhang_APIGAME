@@ -202,21 +202,53 @@ public static class SudokuVerifier
         Enumerable.Range(0, 81).All(i => puzzle[i] is '0' or '.' || puzzle[i] == solution[i]);
 }
 
-/// <summary>Điểm do server tính từ dữ liệu ván (bỏ qua điểm client gửi).</summary>
+/// <summary>
+/// Điểm do server tính từ dữ liệu ván (bỏ qua điểm client gửi). Công thức PHẢI giống hệt app Flutter
+/// (rubik_scoring.dart, sudoku_engine.dart, jigsaw.dart, caro_rules.dart) và server Java cũ
+/// (Scoring.java), để bảng xếp hạng không đổi khi chuyển backend. Thời gian tính bằng giây nguyên.
+/// </summary>
 public static class ScoreCalculator
 {
-    public static int Compute(string game, string outcome, long durationMs, int moves, int errors, int hints)
+    private static readonly Regex PuzzleMode = new("^([3-6])x([3-6])$", RegexOptions.Compiled);
+    private static readonly Regex CaroMode = new("^(easy|medium|hard)-(x|o)$", RegexOptions.Compiled);
+
+    /// <summary>Số mảnh của chế độ xếp hình <c>NxN</c> (3–6), null nếu không phải dạng đó.</summary>
+    public static int? PuzzlePieces(string mode) =>
+        PuzzleMode.Match(mode) is { Success: true } m && m.Groups[1].Value == m.Groups[2].Value
+            ? int.Parse(m.Groups[1].Value) * int.Parse(m.Groups[1].Value) : null;
+
+    public static int Compute(string game, string mode, string outcome, long durationMs, int moves, int errors,
+        int hints, bool autoSolve = false, int? pieces = null)
     {
-        if (game == GameIds.Caro)
-            return outcome switch { Outcomes.Win => 100, Outcomes.Draw => 50, _ => 10 };
-        if (outcome != Outcomes.Win) return 0;
-        var seconds = (int)Math.Min(durationMs / 1000, 100_000);
-        var score = game switch
+        var seconds = Math.Max(0, durationMs) / 1000;
+        var win = outcome == Outcomes.Win;
+        switch (game)
         {
-            GameIds.Rubik => 10_000 - seconds * 5 - moves * 10,
-            GameIds.Sudoku => 10_000 - seconds * 4 - errors * 250 - hints * 400,
-            _ => 10_000 - seconds * 4 - moves * 2 - hints * 400,
-        };
-        return Math.Max(100, score);
+            case GameIds.Rubik:
+                if (!win || autoSolve) return 0;
+                return (int)Math.Max(0, Math.Max(100, 5000 - 5 * seconds - 10L * moves) - 150L * hints);
+            case GameIds.Sudoku:
+                if (!win) return 0;
+                var sudokuBase = mode switch { "medium" => 2000, "hard" => 3500, _ => 1000 };
+                return (int)Math.Max(100, sudokuBase - 2 * seconds - 50L * errors - 100L * hints);
+            case GameIds.Caro:
+            {
+                var level = CaroMode.Match(mode) is { Success: true } m ? m.Groups[1].Value : "easy";
+                var caroBase = level switch { "hard" => 1000, "medium" => 600, _ => 300 };
+                var raw = outcome switch
+                {
+                    Outcomes.Win => caroBase + Math.Max(0, 300 - 3 * moves),
+                    Outcomes.Draw => caroBase / 3,
+                    _ => 0,
+                };
+                return Math.Max(0, raw - 100 * hints);
+            }
+            default: // puzzle
+            {
+                if (!win) return 0;
+                var count = PuzzlePieces(mode) ?? pieces ?? 0;
+                return (int)Math.Max(50, 500 + 30L * count - seconds - 5L * errors - 50L * hints);
+            }
+        }
     }
 }
