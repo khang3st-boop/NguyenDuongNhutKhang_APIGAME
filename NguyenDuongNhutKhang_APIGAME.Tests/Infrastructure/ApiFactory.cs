@@ -9,17 +9,23 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Time.Testing;
+using Npgsql;
 using NguyenDuongNhutKhang_APIGAME.Data;
 
 namespace NguyenDuongNhutKhang_APIGAME.Tests.Infrastructure;
 
 /// <summary>
-/// Chạy chính Program.cs của API trên một database LocalDB RIÊNG cho mỗi lần chạy (tên ngẫu nhiên),
-/// migrate bằng migration thật và xoá database khi xong. Không đụng database phát triển hay Neon.
+/// Chạy chính Program.cs trên database RIÊNG mỗi lần: LocalDB hoặc PostgreSQL qua GAMEHUB_TEST_POSTGRES,
+/// migrate bằng migration thật và giữ database khi xong để kiểm tra. Không đụng database phát triển hay Neon.
 /// </summary>
 public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public string DatabaseName { get; } = "NguyenDuongNhutKhang_APIGAME_Test_" + Guid.NewGuid().ToString("N")[..10];
+    public bool IsPostgres => !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GAMEHUB_TEST_POSTGRES"));
+    public string ConnectionString => IsPostgres
+        ? new NpgsqlConnectionStringBuilder(Environment.GetEnvironmentVariable("GAMEHUB_TEST_POSTGRES"))
+            { Database = DatabaseName.ToLowerInvariant(), Pooling = false }.ConnectionString
+        : $@"Server=(localdb)\MSSQLLocalDB;Database={DatabaseName};Trusted_Connection=True;TrustServerCertificate=True";
 
     /// <summary>Khoá JWT ngẫu nhiên chỉ sống trong tiến trình test (để tự ký token giả mạo kiểm tra từ chối).</summary>
     public string JwtKey { get; } = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
@@ -35,9 +41,10 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseEnvironment("Development");
         builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["ConnectionStrings:Default"] =
-                $@"Server=(localdb)\MSSQLLocalDB;Database={DatabaseName};Trusted_Connection=True;TrustServerCertificate=True",
+            ["ConnectionStrings:Default"] = ConnectionString,
+            ["Database:Provider"] = IsPostgres ? "PostgreSql" : "SqlServer",
             ["Database:MigrateOnStartup"] = "true",
+            ["Database:RequireExisting"] = "false", // chỉ database test có tên ngẫu nhiên được tạo lần đầu
             ["Jwt:Key"] = JwtKey,
             ["Jwt:Issuer"] = Issuer,
             ["Jwt:Audience"] = Audience,
@@ -48,6 +55,13 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         }));
         builder.ConfigureServices(services =>
         {
+            // Minimal-hosting chọn provider trước ConfigureAppConfiguration của test; thay alias cho context PG thật.
+            if (IsPostgres)
+            {
+                services.RemoveAll<AppDbContext>();
+                services.AddDbContext<PostgresAppDbContext>(o => o.UseNpgsql(ConnectionString));
+                services.AddScoped<AppDbContext>(sp => sp.GetRequiredService<PostgresAppDbContext>());
+            }
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(Clock);
         });
@@ -59,18 +73,7 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    async Task IAsyncLifetime.DisposeAsync()
-    {
-        try
-        {
-            using var scope = Services.CreateScope();
-            await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureDeletedAsync();
-        }
-        finally
-        {
-            await base.DisposeAsync();
-        }
-    }
+    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
 
     public async Task<T> WithDbAsync<T>(Func<AppDbContext, Task<T>> work)
     {

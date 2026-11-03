@@ -1,4 +1,7 @@
-# Kế hoạch triển khai .NET Game Hub API (chưa thực hiện — cần duyệt)
+# Kế hoạch SQL Server cũ (lưu tham khảo)
+
+**Đã được thay thế theo yêu cầu ngày 04/11/2026:** triển khai Render/PostgreSQL độc lập theo
+[Render_Deployment.md](Render_Deployment.md). Nội dung dưới đây là đề xuất SQL Server trước đó, không phải cấu hình đang triển khai.
 
 Nguyên tắc: **không đụng** dịch vụ Java đang chạy trên Render và database Neon production.
 Backend .NET chạy như một dịch vụ **mới, song song**, với database SQL Server riêng.

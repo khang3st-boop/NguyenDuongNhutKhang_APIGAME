@@ -1,0 +1,44 @@
+# Chỉ tạo tài nguyên .NET mới; không khai báo service Java hoặc database Neon hiện có.
+services:
+  - type: web
+    name: gamehub-dotnet-api
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: off
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: Database__Provider
+        value: PostgreSql
+      - key: Database__RequireExisting
+        value: "true"
+      # Free không có pre-deploy command: chỉ migrate trên database .NET riêng, dùng migration lock EF.
+      - key: Database__MigrateOnStartup
+        value: "true"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gamehub-dotnet-db
+          property: connectionString
+      - key: Jwt__Key
+        generateValue: true
+      - key: Jwt__Issuer
+        value: GameHub.DotNet.Api
+      - key: Jwt__Audience
+        value: GameHub.Client
+      - key: Cors__Origins__0
+        sync: false
+      - key: Swagger__Enabled
+        value: "false"
+databases:
+  - name: gamehub-dotnet-db
+    plan: free
+    region: singapore
+    databaseName: gamehub_dotnet
+    user: gamehub_dotnet
+    postgresMajorVersion: "17"
+    ipAllowList: []

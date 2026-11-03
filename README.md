@@ -4,8 +4,8 @@ Backend C# cho Game Hub (Rubik, Sudoku, Puzzle trượt, Caro) — chạy song s
 backend Java Spring Boot đang chạy trên Render. Frontend vẫn là Flutter.
 
 - Solution: `NguyenDuongNhutKhang_APIGAME.slnx`
-- API: `NguyenDuongNhutKhang_APIGAME/` — Controllers → Services → Repositories → EF Core (SQL Server)
-- Test: `NguyenDuongNhutKhang_APIGAME.Tests/` — xUnit, unit + integration trên SQL Server LocalDB thật
+- API: `NguyenDuongNhutKhang_APIGAME/` — Controllers → Services → Repositories → EF Core (LocalDB Development / PostgreSQL Production)
+- Test: `NguyenDuongNhutKhang_APIGAME.Tests/` — xUnit, unit + integration trên SQL Server LocalDB và PostgreSQL thật
 - Tài liệu: `Docs/API_Contract_Diff.md` (so sánh với Flutter/Java), `Docs/Deploy_Plan.md`, `Docs/Flutter_Integration_Guide.md` (chạy app Flutter với .NET)
 
 ## 1. Chạy bằng Visual Studio (F5)
@@ -22,9 +22,12 @@ Yêu cầu: Visual Studio 2026 (workload ASP.NET), .NET SDK 10, SQL Server Expre
      ```
    Nếu chưa đặt, Development dùng khoá ngẫu nhiên tạm thời (token mất hiệu lực mỗi lần khởi động lại, log có cảnh báo);
    môi trường khác thiếu khoá → app dừng ngay khi khởi động (không có khoá mặc định trong code).
-3. Nhấn **F5** → trình duyệt mở `http://localhost:5292/swagger`.
-   Lần đầu, app tự tạo database `NguyenDuongNhutKhang_APIGAME_Dev` trên `(localdb)\MSSQLLocalDB`
-   bằng migration (`Database:MigrateOnStartup=true` chỉ trong Development).
+3. Database Development phải đã được đăng ký trên `(localdb)\MSSQLLocalDB`.
+   `Database:RequireExisting=true` kiểm tra kết nối trước migration, tránh tạo nhầm database rỗng khi metadata bị mất.
+   Nếu MDF/LDF đã có nhưng database chưa attach, sao lưu và kiểm tra file trước khi attach lại;
+   xem [báo cáo sửa lỗi LocalDB](Docs/LocalDB_Startup_Fix.md). Với máy mới hoàn toàn chưa có dữ liệu,
+   quản trị viên có thể cấp database và áp dụng migration bằng EF tooling trước lần F5 đầu tiên.
+   Nhấn **F5** → trình duyệt mở `http://localhost:5292/swagger`; `MigrateOnStartup=true` chỉ áp dụng migration còn thiếu.
 4. Trong Swagger: `POST /api/v1/auth/register` → copy `accessToken` → nút **Authorize** → dán token.
 
 Profile **http (LAN - dien thoai that)** lắng nghe `http://*:5292` để điện thoại thật trong cùng Wi‑Fi gọi được
@@ -57,14 +60,18 @@ File `NguyenDuongNhutKhang_APIGAME/NguyenDuongNhutKhang_APIGAME.http` chứa chu
 
 | Khoá | Development | Production |
 |---|---|---|
-| `ConnectionStrings:Default` | LocalDB trong `appsettings.Development.json` (không mật khẩu) | biến môi trường `ConnectionStrings__Default` |
+| `Database:Provider` | `SqlServer` | `PostgreSql` |
+| `ConnectionStrings:Default` | LocalDB trong `appsettings.Development.json` (không mật khẩu) | `DATABASE_URL` hoặc `ConnectionStrings__Default` PostgreSQL riêng |
 | `Jwt:Key` | user-secrets | biến môi trường `Jwt__Key` |
-| `Swagger:Enabled` | luôn bật | mặc định **tắt**; chỉ bật có chủ đích |
+| Swagger/OpenAPI | luôn bật | không map endpoint công khai |
 | `Database:MigrateOnStartup` | `true` | `false` (chạy migration có kiểm soát) |
+| `Database:RequireExisting` | `true` (dừng nếu không mở được database) | `true`, dùng database cloud đã cấp |
 | `Cors:Origins` | localhost | điền domain thật |
 
 `.gitignore` chặn `appsettings.Production.json`, `appsettings.*.local.json`, `.env*`.
-**Không** trỏ chuỗi kết nối vào database Neon production — backend này dùng database riêng.
+**Không** trỏ chuỗi kết nối vào database Neon production của Java — backend này dùng database riêng.
+Deploy Docker/Render và smoke test REST/WebSocket: [Docs/Render_Deployment.md](Docs/Render_Deployment.md).
+Hai bộ migration tách biệt theo `AppDbContext` và `PostgresAppDbContext`.
 
 ## 4. Kiến trúc chính
 

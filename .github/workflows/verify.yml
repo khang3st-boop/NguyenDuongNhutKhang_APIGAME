@@ -1,0 +1,40 @@
+name: Verify API
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: gamehub_ci
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gamehub_ci -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      GAMEHUB_TEST_POSTGRES: Host=localhost;Port=5432;Database=postgres;Username=gamehub_ci;Password=ci_only_password;SSL Mode=Disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet build -c Debug
+      - run: dotnet build -c Release --no-restore
+      - run: dotnet test -c Release --no-build --logger "trx;LogFileName=postgres.trx"
+      - run: docker build -t gamehub-dotnet:verify .
+  sqlserver:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: sqllocaldb start MSSQLLocalDB
+      - run: dotnet test -c Debug --logger "trx;LogFileName=sqlserver.trx"

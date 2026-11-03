@@ -1,7 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using NguyenDuongNhutKhang_APIGAME.Data;
 using NguyenDuongNhutKhang_APIGAME.DTOs;
@@ -296,5 +295,5 @@ public class GameResultService(AppDbContext db, GameResultRepository repo, TimeP
         o?[key] is JsonValue v && v.GetValueKind() == JsonValueKind.String ? v.GetValue<string>() : null;
 
     internal static bool IsUniqueViolation(DbUpdateException ex) =>
-        ex.InnerException is SqlException { Number: 2601 or 2627 };
+        DatabaseErrors.IsUniqueViolation(ex);
 }

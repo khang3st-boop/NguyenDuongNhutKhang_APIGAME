@@ -6,6 +6,7 @@ namespace NguyenDuongNhutKhang_APIGAME.Controllers;
 
 /// <summary>Kiểm tra tình trạng máy chủ.</summary>
 [Route("api/v1/health")]
+[Route("health")]
 [Tags("Health")]
 public class HealthController(AppDbContext db, TimeProvider clock) : ApiControllerBase
 {

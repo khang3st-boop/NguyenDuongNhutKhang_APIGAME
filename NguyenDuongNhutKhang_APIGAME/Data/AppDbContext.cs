@@ -9,9 +9,11 @@ namespace NguyenDuongNhutKhang_APIGAME.Data;
 /// <summary>
 /// DbContext chính: bảng Identity (đổi tên thành Users, Roles, ...) + dữ liệu game, bạn bè, phòng đấu, chat.
 /// </summary>
-public class AppDbContext(DbContextOptions<AppDbContext> options)
-    : IdentityDbContext<AppUser, AppRole, Guid>(options)
+public class AppDbContext : IdentityDbContext<AppUser, AppRole, Guid>
 {
+    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+    protected AppDbContext(DbContextOptions options) : base(options) { }
+
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<GameSession> GameSessions => Set<GameSession>();
@@ -271,7 +273,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
             e.HasIndex(m => new { m.SenderId, m.RecipientId, m.Id });
             e.HasIndex(m => new { m.RecipientId, m.ReadAt });
             // Gửi lại cùng clientId (mạng chập chờn) không tạo bản trùng.
-            e.HasIndex(m => new { m.SenderId, m.ClientId }).IsUnique().HasFilter("[ClientId] IS NOT NULL");
+            e.HasIndex(m => new { m.SenderId, m.ClientId }).IsUnique()
+                .HasFilter(Database.IsNpgsql() ? "\"ClientId\" IS NOT NULL" : "[ClientId] IS NOT NULL");
             e.HasOne<AppUser>().WithMany().HasForeignKey(m => m.SenderId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<AppUser>().WithMany().HasForeignKey(m => m.RecipientId).OnDelete(DeleteBehavior.NoAction);
         });

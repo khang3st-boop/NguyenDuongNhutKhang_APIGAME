@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NguyenDuongNhutKhang_APIGAME.Data;
 using NguyenDuongNhutKhang_APIGAME.DTOs;
 using NguyenDuongNhutKhang_APIGAME.Helpers;
 
@@ -42,7 +43,7 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
     }
 
     private static bool IsUniqueViolation(DbUpdateException ex) =>
-        ex.InnerException is Microsoft.Data.SqlClient.SqlException { Number: 2601 or 2627 };
+        DatabaseErrors.IsUniqueViolation(ex);
 }
 
 public static class ErrorWriter

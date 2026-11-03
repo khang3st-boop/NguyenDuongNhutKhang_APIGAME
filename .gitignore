@@ -10,3 +10,8 @@ appsettings.*.local.json
 appsettings.Production.json
 *.env
 .env*
+*.mdf
+*.ldf
+*.bak
+secrets.json
+artifacts/

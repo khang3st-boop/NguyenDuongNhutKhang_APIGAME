@@ -12,22 +12,21 @@ using NguyenDuongNhutKhang_APIGAME.Models;
 using NguyenDuongNhutKhang_APIGAME.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.ConfigureGameHubHosting();
 var services = builder.Services;
 
 // ---------------------------------------------------------------- cấu hình
-services.AddOptions<JwtOptions>().Bind(builder.Configuration.GetSection(JwtOptions.Section));
+services.AddOptions<JwtOptions>().Bind(builder.Configuration.GetSection(JwtOptions.Section))
+    .Validate(o => builder.Environment.IsDevelopment() || (!string.IsNullOrWhiteSpace(o.Key)
+        && System.Text.Encoding.UTF8.GetByteCount(o.Key) >= 32), "Production cần Jwt:Key riêng, tối thiểu 32 byte.")
+    .Validate(o => !string.IsNullOrWhiteSpace(o.Issuer) && !string.IsNullOrWhiteSpace(o.Audience), "JWT cần Issuer và Audience.")
+    .ValidateOnStart();
 services.AddOptions<SeedOptions>().Bind(builder.Configuration.GetSection(SeedOptions.Section));
 services.AddSingleton(TimeProvider.System);
 
 // ---------------------------------------------------------------- database
-// Chuỗi kết nối đọc lúc chạy: Development → LocalDB (appsettings.Development.json, không mật khẩu);
-// Production → biến môi trường ConnectionStrings__Default. Không ghi mật khẩu database vào Git.
-services.AddDbContext<AppDbContext>((sp, o) =>
-{
-    var cs = sp.GetRequiredService<IConfiguration>().GetConnectionString("Default")
-             ?? throw new InvalidOperationException("Thiếu ConnectionStrings:Default.");
-    o.UseSqlServer(cs);
-});
+// Development: SqlServer/LocalDB; Production: PostgreSql/context và migration riêng.
+services.AddGameHubDatabase(builder.Configuration);
 
 // ---------------------------------------------------------------- Identity
 services.AddIdentityCore<AppUser>(o =>
@@ -140,20 +139,25 @@ services.AddCors(o => o.AddDefaultPolicy(p =>
 
 var app = builder.Build();
 
+// Thiếu JWT Production phải dừng trước khi sửa schema hoặc seed database.
+if (!app.Environment.IsDevelopment()) _ = app.Services.GetRequiredService<JwtSigning>();
+
+await DbSeeder.InitializeAsync(app.Services);
+
+if (args.Length == 1 && args[0] == "migrate") return;
+
 // Lệnh quản trị cục bộ (không qua HTTP): dotnet run -- grant-admin <username>
 if (args.Length == 2 && args[0] == "grant-admin")
 {
-    await DbSeeder.InitializeAsync(app.Services);
     Environment.ExitCode = await DbSeeder.GrantAdminAsync(app.Services, args[1]);
     return;
 }
 
-await DbSeeder.InitializeAsync(app.Services);
-
+app.UseForwardedHeaders();
 app.UseMiddleware<ErrorHandlingMiddleware>();
 
-// Swagger: luôn bật ở Development; môi trường khác chỉ bật khi Swagger:Enabled=true.
-if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Swagger:Enabled"))
+// Swagger/OpenAPI chỉ có ở Development; biến Swagger:Enabled không thể vô tình công khai Production.
+if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.UseSwaggerUI(o =>
@@ -171,7 +175,9 @@ if (!app.Environment.IsDevelopment())
 {
     // Development giữ HTTP để máy ảo Android (10.0.2.2:5292) gọi được.
     app.UseHsts();
-    app.UseHttpsRedirection();
+    // Health probe nội bộ Render dùng HTTP; các endpoint nghiệp vụ chuyển sang HTTPS sau khi xử lý forwarded headers.
+    app.UseWhen(ctx => ctx.Request.Path != "/health" && ctx.Request.Path != "/health/live",
+        branch => branch.UseHttpsRedirection());
 }
 app.UseCors();
 app.UseAuthentication();
@@ -180,6 +186,7 @@ app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapGet("/health/live", () => Results.Ok(new { status = "UP" })).AllowAnonymous().ExcludeFromDescription();
 app.MapHub<GameHub>("/hubs/game");
 
 app.Run();

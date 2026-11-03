@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using NguyenDuongNhutKhang_APIGAME.Data;
 using NguyenDuongNhutKhang_APIGAME.DTOs;
@@ -39,7 +38,7 @@ public class DailyService(AppDbContext db, GameResultRepository repo, TimeProvid
             row = new DailyChallenge { Date = date, Game = game, Seed = RandomNumberGenerator.GetInt32(int.MaxValue), Mode = ModeFor(game, day) };
             db.DailyChallenges.Add(row);
             try { await db.SaveChangesAsync(); }
-            catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
+            catch (DbUpdateException ex) when (DatabaseErrors.IsUniqueViolation(ex))
             {
                 // Request khác vừa tạo cùng ngày → dùng bản đã có.
                 db.ChangeTracker.Clear();
