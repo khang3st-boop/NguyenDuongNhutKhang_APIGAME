@@ -1,5 +1,17 @@
 # Game Hub Web API (ASP.NET Core .NET 10)
 
+Đồ án Lập trình Di động — **Backend** của Game Hub 4-in-1 (Rubik, Sudoku, Xếp hình, Caro). Sinh viên: Nguyễn Dương Nhựt Khang.
+
+- Frontend Flutter: https://github.com/khang3st-boop/gamehub-flutter
+- API chạy thật: https://gamehub-dotnet-api.onrender.com — Swagger (Try it out, JWT Authorize): https://gamehub-dotnet-api.onrender.com/swagger
+
+**Công nghệ:** ASP.NET Core .NET 10, EF Core (PostgreSQL trên Render, SQL Server LocalDB khi phát triển), JWT + refresh token, SignalR (`/hubs/game`), Docker, xUnit.
+
+**Chức năng thực tế:** xác thực (tên đăng nhập, Gmail OTP qua Brevo, Google ID Token, quên mật khẩu), hồ sơ, kết quả và lịch sử 4 game, bảng xếp hạng, bạn bè, thách đấu và phòng 2/4 người, chat, tìm người chơi gần, quản trị (Admin). Khoảng 139 endpoint REST được mô tả tiếng Việt trong Swagger.
+
+**Chạy nhanh:** xem mục 1 bên dưới (Visual Studio/`dotnet run`), hoặc `docker build -t gamehub-api .`. Mọi bí mật (khoá JWT, chuỗi DB, khoá email) chỉ đặt qua biến môi trường/user-secrets, không nằm trong Git. Mẫu biến: `render.yaml`.
+
+---
 Backend C# cho Game Hub (Rubik, Sudoku, Puzzle trượt, Caro) — chạy song song, **không thay thế**
 backend Java Spring Boot đang chạy trên Render. Frontend vẫn là Flutter.
 
