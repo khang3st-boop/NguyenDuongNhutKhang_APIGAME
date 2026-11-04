@@ -9,6 +9,8 @@ param(
   [string]$Dump = "$PSScriptRoot/../TestResults/gamehub_prod_pre_authv2.dump"
 )
 $ErrorActionPreference = 'Stop'
+if (-not $PSScriptRoot) { throw 'Phải chạy bằng -File tools\prod-db-protect.ps1 (không dán từng dòng): $PSScriptRoot rỗng làm sai đường dẫn backup.' }
+function Test-Exit([string]$what) { if ($LASTEXITCODE -ne 0) { throw "$what thất bại (exit $LASTEXITCODE)." } }
 
 function Read-PgUrl([string]$prompt) {
   $s = Read-Host $prompt -AsSecureString
@@ -49,6 +51,7 @@ try {
       New-Item -ItemType Directory -Force (Split-Path $Dump) | Out-Null
       Write-Host "pg_dump $(pg_dump --version)"
       pg_dump --format=custom --no-owner --no-privileges --file $Dump
+      if ($LASTEXITCODE -ne 0) { Remove-Item $Dump -ErrorAction SilentlyContinue; throw "pg_dump thất bại (exit $LASTEXITCODE); đã bỏ file dở dang." }
       $f = Get-Item $Dump
       Write-Host ("Đã tạo {0} ({1:N0} byte). Thư mục TestResults đã bị gitignore; KHÔNG commit file này." -f $f.FullName, $f.Length)
       Write-Host ("SHA-256: " + (Get-FileHash $Dump -Algorithm SHA256).Hash)
@@ -64,10 +67,11 @@ try {
       Need pg_restore; Need psql
       if (-not (Test-Path $Dump)) { throw "Không thấy file dump $Dump." }
       Write-Host 'Khôi phục vào DB THỬ NGHIỆM do bạn chỉ định. Tuyệt đối không dùng Production.'
-      $t = Read-PgUrl 'Dán URL Neon STAGING (ẩn)'
+      $t = Read-PgUrl 'Dán URL DB THỬ (localhost hoặc Neon staging) (ẩn)'
       # Chặn nhầm sang Production: host Render, tên DB Production, hoặc host không phải Neon.
       if ($t.Host -like '*render.com*' -or $t.Host -like 'dpg-*' -or $t.Db -eq 'gamehub_dotnet' -or $t.User -eq 'gamehub_dotnet') { throw 'Từ chối: đây là Render/Production.' }
-      if ($t.Host -notlike '*.neon.tech') { throw "Từ chối: '$($t.Host)' không phải host Neon. Chỉ cho phép *.neon.tech." }
+      $isLocal = $t.Host -in 'localhost', '127.0.0.1', '::1'
+      if (-not $isLocal -and $t.Host -notlike '*.neon.tech') { throw "Từ chối: '$($t.Host)' không phải localhost hay host Neon (*.neon.tech)." }
       $typed = Read-Host "Gõ lại CHÍNH XÁC host đích để xác nhận ($($t.Host))"
       if ($typed -ne $t.Host) { throw 'Host xác nhận không khớp. Dừng, không làm gì.' }
       Use-Pg $t $t.Db
@@ -75,8 +79,10 @@ try {
       $exists = psql -X -t -A -c "SELECT 1 FROM pg_database WHERE datname = '$name';"
       if ($exists -match '1') { throw "Database '$name' đã tồn tại trên đích. Tự xoá thủ công nếu chắc chắn đó là bản thử cũ, rồi chạy lại." }
       psql -X -v ON_ERROR_STOP=1 -c "CREATE DATABASE $name;"
+      Test-Exit 'CREATE DATABASE'
       Use-Pg $t $name
       pg_restore --no-owner --no-privileges --exit-on-error --dbname $name $Dump
+      Test-Exit 'pg_restore'
       psql -X -c 'SELECT COUNT(*) AS users FROM "Users";' -c 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY 1;'
       Write-Host "Đã khôi phục thử vào '$name'. So số Users với Production, rồi xoá: DROP DATABASE $name WITH (FORCE);"
     }

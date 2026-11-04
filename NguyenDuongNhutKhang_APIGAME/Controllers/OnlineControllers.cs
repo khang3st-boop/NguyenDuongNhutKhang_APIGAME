@@ -74,6 +74,7 @@ public class SafetyController(IFriendService friends) : ApiControllerBase
         return NoContent();
     }
 
+    /// <summary>Bỏ chặn một người dùng.</summary>
     [HttpDelete("{id:guid}/block")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Unblock(Guid id)
@@ -154,6 +155,7 @@ public class InvitesController(IInviteService invites) : ApiControllerBase
     [ProducesResponseType<InviteDto>(StatusCodes.Status200OK)]
     public Task<InviteDto> Accept(Guid id) => invites.AcceptAsync(UserId, id);
 
+    /// <summary>Từ chối lời mời thách đấu.</summary>
     [HttpPost("{id:guid}/decline")]
     [ProducesResponseType<InviteDto>(StatusCodes.Status200OK)]
     public Task<InviteDto> Decline(Guid id) => invites.DeclineAsync(UserId, id);
@@ -287,6 +289,7 @@ public class MatchmakingController(IMatchmakingService mm) : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Ticket() => await mm.TicketAsync(UserId) is { } t ? Ok(t) : NoContent();
 
+    /// <summary>Huỷ tìm đối thủ (rời hàng chờ ghép trận).</summary>
     [HttpDelete("queue")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Leave()

@@ -39,6 +39,8 @@ public static class ServiceSetup
         services.AddScoped<PresenceService>();
         services.AddScoped<DuelService>();
         services.AddScoped<DirectChatService>();
+        services.AddSingleton<NearbyStore>();
+        services.AddScoped<NearbyService>();
         services.AddHostedService<HousekeepingService>();
 
         services.AddSignalR(o =>

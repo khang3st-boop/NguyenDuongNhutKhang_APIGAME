@@ -77,3 +77,8 @@ public record SetPresenceRequest
 {
     public bool Ready { get; init; }
 }
+
+/// <summary>Người chơi gần đây: chỉ có nhãn khoảng cách làm tròn, KHÔNG có toạ độ.</summary>
+public record NearbyPlayerDto(Guid UserId, string DisplayName, int AvatarColor, string Distance, DateTime LastSeen);
+
+public record NearbyPresenceRequest(double Lat, double Lon);

@@ -159,8 +159,8 @@ if (args.Length == 2 && args[0] == "grant-admin")
 app.UseForwardedHeaders();
 app.UseMiddleware<ErrorHandlingMiddleware>();
 
-// Swagger/OpenAPI chỉ có ở Development; biến Swagger:Enabled không thể vô tình công khai Production.
-if (app.Environment.IsDevelopment())
+// Swagger/OpenAPI: luôn bật ở Development; ở môi trường khác chỉ bật khi đặt rõ Swagger:Enabled=true (mặc định false).
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Swagger:Enabled"))
 {
     app.MapOpenApi();
     app.UseSwaggerUI(o =>

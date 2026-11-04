@@ -23,7 +23,18 @@ public static class OpenApiSetup
                         **Cách thử nhanh:** `POST /api/v1/auth/register` → copy `accessToken` → bấm **Authorize** → dán token
                         (không cần gõ chữ `Bearer`). Access token sống 15 phút; dùng `POST /api/v1/auth/refresh` để lấy token mới.
 
-                        Realtime (chat, trạng thái trận) qua SignalR hub `/hubs/game?access_token=<JWT>`.
+                        ## Realtime — SignalR (không thử được bằng Swagger)
+                        - **Hub:** `wss://<host>/hubs/game` — xác thực bằng JWT: header `Authorization: Bearer <accessToken>` hoặc `?access_token=<accessToken>` (WebSocket/SSE).
+                        - **Client gọi server (invoke):** `Ping()` → giờ server (giữ online); `SendChat(matchId, text, clientId?)` → tin nhắn phòng;
+                          `Ready(matchId, ready)` → trạng thái trận; `Progress(matchId, progress)` → `true`; `Assist(matchId)` → trạng thái trận (trợ giúp, có thể bị khoá theo luật phòng).
+                        - **Server đẩy về client:** một method duy nhất `event` với payload `{ "type", "data", "matchId", "ts" }`. Các `type`: `invite.received`,
+                          `invite.accepted|declined|cancelled|expired`, `matchmaking.found`, `match.state`, `match.ended`, `match.left`, `match.connection`,
+                          `match.chat`, `chat.message`, `presence`, `presence.self`, `friend.*`, `lobby.updated`.
+                        - **Lỗi:** `HubException` với thông điệp dạng `MÃ_LỖI: mô tả` (ví dụ `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`).
+                        - **Luồng thách đấu:** A `POST /api/v1/challenges/invites` → B nhận `invite.received` → B `POST .../invites/{id}/accept` →
+                          cả hai nhận `match.state` (WAITING) → cả hai `Ready(matchId,true)` hoặc `POST /api/v1/matches/{id}/ready` → `COUNTDOWN` 3 giây → `PLAYING` →
+                          `Progress`/`POST /api/v1/matches/{id}/caro/move` (Caro) → `POST /api/v1/matches/{id}/finish` → `match.ended` (kết quả ghi vào bảng xếp hạng).
+                        - Mất kết nối: server phát `match.connection {userId, connected:false}`; client kết nối lại cùng JWT và đọc lại `GET /api/v1/matches/{id}`.
                         """,
                 };
                 doc.Components ??= new OpenApiComponents();

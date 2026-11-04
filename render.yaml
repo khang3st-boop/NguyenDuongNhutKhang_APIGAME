@@ -33,7 +33,7 @@ services:
       - key: Cors__Origins__0
         sync: false
       - key: Swagger__Enabled
-        value: "false"
+        value: "true"
       # Auth V2 — bí mật nhập tay trên Render Dashboard (sync: false), KHÔNG ghi giá trị vào repo.
       - key: Auth__OtpKey
         generateValue: true
