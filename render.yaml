@@ -40,8 +40,10 @@ services:
       - key: Auth__Google__ClientIds__0
         sync: false
       - key: Email__Provider
-        value: Resend
+        value: Brevo
       - key: Email__FromAddress
+        sync: false
+      - key: Email__BrevoApiKey
         sync: false
       - key: Email__ResendApiKey
         sync: false

@@ -82,6 +82,9 @@ public class EmailOptions
 
     public string? ResendApiKey { get; set; }
 
+    /// <summary>Khoá API Brevo (header <c>api-key</c>), chỉ đặt qua biến môi trường <c>Email__BrevoApiKey</c>.</summary>
+    public string? BrevoApiKey { get; set; }
+
     /// <summary>
     /// Địa chỉ gửi thuần (<c>onboarding@resend.dev</c>). Chấp nhận cả dạng dán nhầm <c>Game Hub &lt;a@b.co&gt;</c>
     /// hoặc <c>[a@b.co](mailto:a@b.co)</c> để không tạo ra tiêu đề From lồng nhau bị Resend từ chối (422).
@@ -99,6 +102,7 @@ public class EmailOptions
     {
         "smtp" => !string.IsNullOrWhiteSpace(SmtpHost) && !string.IsNullOrWhiteSpace(SmtpUser) && !string.IsNullOrWhiteSpace(SmtpPassword),
         "resend" => !string.IsNullOrWhiteSpace(ResendApiKey),
+        "brevo" => !string.IsNullOrWhiteSpace(BrevoApiKey),
         _ => false,
     };
 }

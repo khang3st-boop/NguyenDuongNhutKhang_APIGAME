@@ -44,6 +44,8 @@ public class EmailTemplateTests
         Assert.False(new EmailOptions { Provider = "None", FromAddress = "x@y.co" }.Configured);
         Assert.False(new EmailOptions { Provider = "Resend", FromAddress = "x@y.co" }.Configured);
         Assert.True(new EmailOptions { Provider = "Resend", FromAddress = "x@y.co", ResendApiKey = "k" }.Configured);
+        Assert.False(new EmailOptions { Provider = "Brevo", FromAddress = "x@y.co" }.Configured);
+        Assert.True(new EmailOptions { Provider = "Brevo", FromAddress = "x@y.co", BrevoApiKey = "k" }.Configured);
         Assert.False(new EmailOptions { Provider = "Smtp", FromAddress = "x@y.co", SmtpHost = "h" }.Configured);
         Assert.True(new EmailOptions { Provider = "Smtp", FromAddress = "x@y.co", SmtpHost = "h", SmtpUser = "u", SmtpPassword = "p" }.Configured);
     }
@@ -52,6 +54,7 @@ public class EmailTemplateTests
     [Theory]
     [InlineData("onboarding@resend.dev", "onboarding@resend.dev")]
     [InlineData("Game Hub <onboarding@resend.dev>", "onboarding@resend.dev")]
+    [InlineData("gamehub khang3st@gmail.com", "khang3st@gmail.com")]
     [InlineData("Game Hub [onboarding@resend.dev](mailto:onboarding@resend.dev)", "onboarding@resend.dev")]
     public void From_address_is_normalised_to_a_bare_email(string raw, string expected) =>
         Assert.Equal(expected, new EmailOptions { FromAddress = raw }.FromEmail);
@@ -99,11 +102,66 @@ public class RealEmailTests(ITestOutputHelper output)
             return;
         }
 
-        IEmailService svc = options.Provider.Equals("smtp", StringComparison.OrdinalIgnoreCase)
-            ? new SmtpEmailService(Options.Create(options), NullLogger<SmtpEmailService>.Instance)
-            : new ResendEmailService(new HttpClient(), Options.Create(options), NullLogger<ResendEmailService>.Instance);
+        IEmailService svc = options.Provider.ToLowerInvariant() switch
+        {
+            "smtp" => new SmtpEmailService(Options.Create(options), NullLogger<SmtpEmailService>.Instance),
+            "brevo" => new BrevoEmailService(new HttpClient(), Options.Create(options), NullLogger<BrevoEmailService>.Instance),
+            _ => new ResendEmailService(new HttpClient(), Options.Create(options), NullLogger<ResendEmailService>.Instance),
+        };
 
         await svc.SendAsync(EmailTemplates.Otp(to, ChallengePurpose.Register, "123456", 5));
         output.WriteLine($"Đã gửi email thật qua {options.Provider}.");
+    }
+}
+
+public class BrevoEmailServiceTests
+{
+    private sealed class Stub(System.Net.HttpStatusCode status, string body = "{}") : HttpMessageHandler
+    {
+        public HttpRequestMessage? Seen;
+        public string? SeenBody;
+        public int Calls;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Calls++;
+            Seen = request;
+            SeenBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(ct);
+            return new HttpResponseMessage(status) { Content = new StringContent(body) };
+        }
+    }
+
+    private static BrevoEmailService Make(Stub stub) => new(new HttpClient(stub),
+        Options.Create(new EmailOptions { Provider = "Brevo", FromAddress = "gamehub khang3st@gmail.com", BrevoApiKey = "test-key" }),
+        NullLogger<BrevoEmailService>.Instance);
+
+    [Fact]
+    public async Task Posts_to_brevo_with_api_key_header_sender_and_both_bodies()
+    {
+        var stub = new Stub(System.Net.HttpStatusCode.Created);
+        await Make(stub).SendAsync(new EmailMessage("to@example.com", "Chủ đề", "<b>h</b>", "t"));
+
+        Assert.Equal("https://api.brevo.com/v3/smtp/email", stub.Seen!.RequestUri!.ToString());
+        Assert.Equal("test-key", stub.Seen.Headers.GetValues("api-key").Single());
+        Assert.Null(stub.Seen.Headers.Authorization);
+        Assert.Contains("\"email\":\"khang3st@gmail.com\"", stub.SeenBody);
+        Assert.Contains("\"htmlContent\"", stub.SeenBody);
+        Assert.Contains("\"textContent\"", stub.SeenBody);
+        Assert.Equal(1, stub.Calls);
+    }
+
+    [Theory]
+    [InlineData(System.Net.HttpStatusCode.Unauthorized, false)]
+    [InlineData(System.Net.HttpStatusCode.BadRequest, false)]
+    [InlineData(System.Net.HttpStatusCode.TooManyRequests, true)]
+    [InlineData(System.Net.HttpStatusCode.BadGateway, true)]
+    public async Task Maps_http_failures_without_retrying(System.Net.HttpStatusCode status, bool transient)
+    {
+        var stub = new Stub(status, "{\"code\":\"unauthorized\",\"message\":\"secret detail\"}");
+        var ex = await Assert.ThrowsAsync<EmailDeliveryException>(() =>
+            Make(stub).SendAsync(new EmailMessage("to@example.com", "s", "h", "t")));
+        Assert.Equal(transient, ex.Transient);
+        Assert.DoesNotContain("secret detail", ex.Message);
+        Assert.Equal(1, stub.Calls);
     }
 }

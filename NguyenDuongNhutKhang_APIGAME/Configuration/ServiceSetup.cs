@@ -55,6 +55,7 @@ public static class ServiceSetup
     public static IServiceCollection AddAuthV2(this IServiceCollection services, IConfiguration config)
     {
         services.AddHttpClient<ResendEmailService>(c => c.Timeout = TimeSpan.FromSeconds(30));
+        services.AddHttpClient<BrevoEmailService>(c => c.Timeout = TimeSpan.FromSeconds(30));
         services.AddHttpClient<HttpGoogleKeyProvider>(c => c.Timeout = TimeSpan.FromSeconds(10));
 
         services.AddSingleton<IEmailService>(sp =>
@@ -65,6 +66,7 @@ public static class ServiceSetup
             {
                 "smtp" => ActivatorUtilities.CreateInstance<SmtpEmailService>(sp),
                 "resend" => sp.GetRequiredService<ResendEmailService>(),
+                "brevo" => sp.GetRequiredService<BrevoEmailService>(),
                 _ => new UnconfiguredEmailService(),
             };
         });

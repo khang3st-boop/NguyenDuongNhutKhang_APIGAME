@@ -130,6 +130,64 @@ public sealed class ResendEmailService(HttpClient http, IOptions<EmailOptions> o
     }
 }
 
+/// <summary>Brevo Transactional Email API (https://developers.brevo.com) qua HTTPS — dùng được trên Render gói miễn phí.</summary>
+public sealed class BrevoEmailService(HttpClient http, IOptions<EmailOptions> options, ILogger<BrevoEmailService> logger) : IEmailService
+{
+    private readonly EmailOptions _o = options.Value;
+    public bool IsConfigured => _o.Configured;
+
+    public async Task SendAsync(EmailMessage message, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email")
+        {
+            Content = JsonContent.Create(new
+            {
+                sender = new { name = _o.FromName, email = _o.FromEmail },
+                to = new[] { new { email = message.To } },
+                subject = message.Subject,
+                htmlContent = message.Html,
+                textContent = message.Text,
+            }),
+        };
+        req.Headers.Add("api-key", _o.BrevoApiKey);
+        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(_o.TimeoutSeconds));
+        HttpResponseMessage res;
+        try
+        {
+            // Một lần gửi duy nhất: không retry trong lớp này để tránh gửi trùng OTP.
+            res = await http.SendAsync(req, cts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new EmailDeliveryException("Brevo hết thời gian chờ.", transient: true);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new EmailDeliveryException("Không kết nối được Brevo.", transient: true, ex);
+        }
+        using (res)
+        {
+            if (res.IsSuccessStatusCode) return;
+            var code = (int)res.StatusCode;
+            // Chỉ ghi mã trạng thái và mã lỗi của Brevo (vd. "unauthorized", "permission_denied"); không ghi thân phản hồi.
+            string? brevoCode = null;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await res.Content.ReadAsStringAsync(CancellationToken.None));
+                if (doc.RootElement.TryGetProperty("code", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.String)
+                    brevoCode = c.GetString();
+            }
+            catch (Exception) { /* thân không phải JSON */ }
+            logger.LogWarning("Brevo trả {Status} ({BrevoCode})", code, brevoCode ?? "n/a");
+            var transient = res.StatusCode == HttpStatusCode.TooManyRequests || code >= 500;
+            throw new EmailDeliveryException($"Brevo trả mã {code}.", transient);
+        }
+    }
+}
+
 /// <summary>Hàng đợi gửi thư nền (quên mật khẩu, thông báo đổi mật khẩu) để thời gian phản hồi không lộ email có tồn tại hay không.</summary>
 public interface IEmailOutbox
 {
