@@ -10,14 +10,14 @@ Không bước nào ở đây sửa `DATABASE_URL`, chạy migration, push hay d
 
 ## B. Cài PostgreSQL Client 17 (nếu chưa có `psql`/`pg_dump`)
 Máy hiện chưa có. `pg_dump` phải **cùng hoặc mới hơn** server (17).
-- Tải installer EDB (https://www.enterprisedb.com/download-postgresql-binaries hoặc installer thường) bản **17.x** cho Windows.
+- Cách 1 (khuyến nghị): `winget install PostgreSQL.PostgreSQL.17` (installer EDB 17.11, SHA256 do winget kiểm tra). Cách 2: tải installer 17.x từ postgresql.org.
 - Ở bước chọn thành phần chỉ tick **Command Line Tools**, bỏ PostgreSQL Server / pgAdmin / Stack Builder.
 - Thêm `C:\Program Files\PostgreSQL\17\bin` vào PATH, mở PowerShell mới, kiểm tra `pg_dump --version` (phải 17.x).
 (Đây là bước tải và cài phần mềm — do bạn thực hiện.)
 
 ## C. Preflight (chỉ đọc)
 ```
-pwsh tools/prod-db-protect.ps1 -Step Preflight
+powershell -NoProfile -File tools\prod-db-protect.ps1 -Step Preflight
 ```
 Script bật `default_transaction_read_only=on` nên mọi lệnh ghi đều bị từ chối. Kết quả cần:
 | Truy vấn | Mong đợi | Ý nghĩa nếu khác |
@@ -29,15 +29,15 @@ Báo tôi **số dòng** của truy vấn 1 và 2 (không cần gửi nội dung
 
 ## D. Backup đầy đủ
 ```
-pwsh tools/prod-db-protect.ps1 -Step Backup
-pwsh tools/prod-db-protect.ps1 -Step Verify
+powershell -NoProfile -File tools\prod-db-protect.ps1 -Step Backup
+powershell -NoProfile -File tools\prod-db-protect.ps1 -Step Verify
 ```
 File: `TestResults/gamehub_prod_pre_authv2.dump` (định dạng custom, đã gitignore). Dump chứa hash mật khẩu và email người dùng: **không commit, không gửi cho ai**, lưu thêm một bản ngoài máy (ổ ngoài/OneDrive riêng tư).
 
 ## E. Thử khôi phục (không đè Production)
 Không tạo DB trả phí. Dùng chính Neon staging (miễn phí) làm nơi thử:
 ```
-pwsh tools/prod-db-protect.ps1 -Step Restore
+powershell -NoProfile -File tools\prod-db-protect.ps1 -Step Restore
 ```
 Script tạo database `gh_restore_check` trong Neon staging, khôi phục dump vào đó, in số `Users` và lịch sử migration, từ chối nếu host là Render. So số `Users` với Production; xong chạy `DROP DATABASE gh_restore_check WITH (FORCE);` trên Neon staging. Lưu ý Neon staging là PostgreSQL 18 (Production 17): khôi phục dump 17 vào 18 là hướng được hỗ trợ.
 
@@ -71,3 +71,9 @@ Hiện `Database__MigrateOnStartup=true` trong `render.yaml` (mặc định tron
 2. Thứ tự an toàn, mỗi bước duyệt riêng: backup + thử khôi phục → preflight 0 dòng → áp `Docs/staging/AddAuthV2PostgreSql.sql` bằng `psql` (một transaction, `-v ON_ERROR_STOP=1`, kết nối từ máy bạn) → kiểm tra bảng/index và `__EFMigrationsHistory` → **rồi mới** deploy code mới.
 3. Vì sao migration đi trước: code cũ bỏ qua bảng mới và không phụ thuộc `EmailIndex`, nên schema mới chạy được với code cũ; còn code mới mà thiếu bảng `AuthChallenges` thì lỗi. Với `MigrateOnStartup=false`, deploy trước migration sẽ không tự sửa schema.
 4. Rủi ro cần biết: đổi biến môi trường làm Render khởi động lại dịch vụ; lần sau thêm migration phải nhớ áp tay. Nếu thiếu migration, API khởi động nhưng các endpoint Auth V2 trả lỗi 500 thay vì tự sửa.
+
+## J. Áp migration có transaction thật sự (chuẩn bị, CHƯA chạy)
+- `AddAuthV2PostgreSql.sql` tự mở `START TRANSACTION` và kết thúc `COMMIT`. PostgreSQL cho phép DDL trong transaction, nên lỗi ở bất kỳ câu nào (ví dụ unique index vì email trùng) làm cả khối rollback.
+- `ON_ERROR_STOP` chỉ dừng psql; nó không tự tạo transaction. Nếu file có BOM làm câu `START TRANSACTION` đầu tiên lỗi, các câu sau có thể chạy ngoài transaction. Vì vậy file đã được bỏ BOM; trước khi chạy phải kiểm tra byte đầu là `53 54 41` (`STA`).
+- Lệnh: `psql -X -v ON_ERROR_STOP=1 -f Docs\staging\AddAuthV2PostgreSql.sql` rồi kiểm tra `\d "AuthChallenges"`, index `UX_Users_NormalizedEmail` và `__EFMigrationsHistory`.
+- Bằng chứng nên có trước khi áp thật: chạy file trên một DB Neon thử có cố ý 2 email trùng, xác nhận lệnh lỗi và schema giữ nguyên (không có `AuthChallenges`, `EmailIndex` còn).
