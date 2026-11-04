@@ -1,0 +1,10 @@
+{
+  "release": "rubik-scanner-20261102",
+  "builtAtUtc": "2026-11-02T06:05:48.8772963Z",
+  "features": [
+    "Rubik real-world scanner",
+    "multiplayer UI"
+  ],
+  "mainDartJsSha256": "68205fc81ec990955fc7298fbf9e5c43760155e6a19bc8e549c3a986a069cbe8",
+  "scannerWorkerSha256": "73a6fe22a6da0e541c42c7d86e9dbef66776e68d71e6f83fbf40473362d1741b"
+}
