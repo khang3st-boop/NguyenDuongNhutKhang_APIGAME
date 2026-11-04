@@ -230,7 +230,9 @@ namespace NguyenDuongNhutKhang_APIGAME.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail")
-                        .HasDatabaseName("EmailIndex");
+                        .IsUnique()
+                        .HasDatabaseName("UX_Users_NormalizedEmail")
+                        .HasFilter("[NormalizedEmail] IS NOT NULL");
 
                     b.HasIndex("NormalizedUserName")
                         .IsUnique()
@@ -238,6 +240,93 @@ namespace NguyenDuongNhutKhang_APIGAME.Migrations
                         .HasFilter("[NormalizedUserName] IS NOT NULL");
 
                     b.ToTable("Users", (string)null);
+                });
+
+            modelBuilder.Entity("NguyenDuongNhutKhang_APIGAME.Models.AuthChallenge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("nvarchar(254)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("IpHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("MaxAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PendingDisplayName")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("PendingPasswordHash")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<string>("PendingUsername")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<DateTime>("ResendAvailableAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ResetTokenExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ResetTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("ResetUsedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("SupersededAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("ResetTokenHash");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("IpHash", "CreatedAt");
+
+                    b.HasIndex("Email", "Purpose", "CreatedAt");
+
+                    b.ToTable("AuthChallenges");
                 });
 
             modelBuilder.Entity("NguyenDuongNhutKhang_APIGAME.Models.Challenge", b =>

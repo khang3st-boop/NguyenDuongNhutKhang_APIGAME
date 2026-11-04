@@ -34,6 +34,17 @@ services:
         sync: false
       - key: Swagger__Enabled
         value: "false"
+      # Auth V2 — bí mật nhập tay trên Render Dashboard (sync: false), KHÔNG ghi giá trị vào repo.
+      - key: Auth__OtpKey
+        generateValue: true
+      - key: Auth__Google__ClientIds__0
+        sync: false
+      - key: Email__Provider
+        value: Resend
+      - key: Email__FromAddress
+        sync: false
+      - key: Email__ResendApiKey
+        sync: false
 databases:
   - name: gamehub-dotnet-db
     plan: free

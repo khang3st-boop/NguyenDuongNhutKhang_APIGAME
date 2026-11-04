@@ -229,13 +229,102 @@ namespace NguyenDuongNhutKhang_APIGAME.Migrations.PostgreSQL
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail")
-                        .HasDatabaseName("EmailIndex");
+                        .IsUnique()
+                        .HasDatabaseName("UX_Users_NormalizedEmail")
+                        .HasFilter("\"NormalizedEmail\" IS NOT NULL");
 
                     b.HasIndex("NormalizedUserName")
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex");
 
                     b.ToTable("Users", (string)null);
+                });
+
+            modelBuilder.Entity("NguyenDuongNhutKhang_APIGAME.Models.AuthChallenge", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IpHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("MaxAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PendingDisplayName")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("PendingPasswordHash")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("PendingUsername")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("ResendAvailableAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ResetTokenExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResetTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("ResetUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SupersededAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("ResetTokenHash");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("IpHash", "CreatedAt");
+
+                    b.HasIndex("Email", "Purpose", "CreatedAt");
+
+                    b.ToTable("AuthChallenges");
                 });
 
             modelBuilder.Entity("NguyenDuongNhutKhang_APIGAME.Models.Challenge", b =>

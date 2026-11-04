@@ -16,6 +16,12 @@ public interface IAuthService
     Task<AuthResponse> RefreshAsync(string refreshToken);
     Task LogoutAsync(Guid? userId, LogoutRequest req);
     Task ChangePasswordAsync(Guid userId, ChangePasswordRequest req);
+
+    /// <summary>Cấp cặp token Game Hub cho người dùng đã được xác thực bằng cách khác (OTP email, Google).</summary>
+    Task<AuthResponse> IssueSessionAsync(AppUser user);
+
+    /// <summary>Thu hồi mọi refresh token và access token của người dùng.</summary>
+    Task RevokeAllSessionsAsync(AppUser user);
 }
 
 public class AuthService(
@@ -135,6 +141,10 @@ public class AuthService(
         // Đổi mật khẩu → mọi access token và refresh token cũ mất hiệu lực.
         await RevokeAllAsync(user);
     }
+
+    public Task<AuthResponse> IssueSessionAsync(AppUser user) => IssueAsync(user);
+
+    public Task RevokeAllSessionsAsync(AppUser user) => RevokeAllAsync(user);
 
     private async Task RevokeAllAsync(AppUser user)
     {

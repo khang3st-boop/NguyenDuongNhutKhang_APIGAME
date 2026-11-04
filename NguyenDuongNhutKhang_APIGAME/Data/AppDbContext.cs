@@ -16,6 +16,7 @@ public class AppDbContext : IdentityDbContext<AppUser, AppRole, Guid>
 
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<AuthChallenge> AuthChallenges => Set<AuthChallenge>();
     public DbSet<GameSession> GameSessions => Set<GameSession>();
     public DbSet<GameResult> GameResults => Set<GameResult>();
     public DbSet<GameStatistic> GameStatistics => Set<GameStatistic>();
@@ -56,6 +57,9 @@ public class AppDbContext : IdentityDbContext<AppUser, AppRole, Guid>
             e.Property(u => u.PasswordHash).HasMaxLength(1024);
             e.Property(u => u.SecurityStamp).HasMaxLength(1024);
             e.Property(u => u.ConcurrencyStamp).HasMaxLength(1024);
+            // Auth V2: mỗi email xác minh chỉ thuộc một tài khoản (tài khoản cũ chưa có email → NULL, không bị ảnh hưởng).
+            e.HasIndex(u => u.NormalizedEmail).IsUnique().HasDatabaseName("UX_Users_NormalizedEmail")
+                .HasFilter(Database.IsNpgsql() ? "\"NormalizedEmail\" IS NOT NULL" : "[NormalizedEmail] IS NOT NULL");
         });
         b.Entity<AppRole>().ToTable("Roles");
         b.Entity<IdentityUserRole<Guid>>().ToTable("UserRoles");
@@ -78,6 +82,23 @@ public class AppDbContext : IdentityDbContext<AppUser, AppRole, Guid>
             e.HasIndex(t => t.TokenHash).IsUnique();
             e.HasIndex(t => new { t.UserId, t.ExpiresAt });
             e.HasOne(t => t.User).WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<AuthChallenge>(e =>
+        {
+            e.Property(c => c.Purpose).HasMaxLength(16);
+            e.Property(c => c.Email).HasMaxLength(254);
+            e.Property(c => c.CodeHash).HasMaxLength(64);
+            e.Property(c => c.IpHash).HasMaxLength(64);
+            e.Property(c => c.PendingUsername).HasMaxLength(20);
+            e.Property(c => c.PendingDisplayName).HasMaxLength(30);
+            e.Property(c => c.PendingPasswordHash).HasMaxLength(1024);
+            e.Property(c => c.ResetTokenHash).HasMaxLength(64);
+            e.HasIndex(c => new { c.Email, c.Purpose, c.CreatedAt });
+            e.HasIndex(c => new { c.IpHash, c.CreatedAt });
+            e.HasIndex(c => c.UserId);
+            e.HasIndex(c => c.ResetTokenHash);
+            e.HasIndex(c => c.ExpiresAt);
         });
 
         // ---- Dữ liệu game ----

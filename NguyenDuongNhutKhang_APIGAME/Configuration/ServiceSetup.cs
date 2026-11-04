@@ -1,6 +1,8 @@
+using Microsoft.Extensions.Options;
 using NguyenDuongNhutKhang_APIGAME.Interfaces;
 using NguyenDuongNhutKhang_APIGAME.Repositories;
 using NguyenDuongNhutKhang_APIGAME.Services;
+using NguyenDuongNhutKhang_APIGAME.Services.Email;
 
 namespace NguyenDuongNhutKhang_APIGAME.Configuration;
 
@@ -44,6 +46,34 @@ public static class ServiceSetup
             o.EnableDetailedErrors = false; // không lộ lỗi nội bộ qua hub
             o.MaximumReceiveMessageSize = 16 * 1024;
         });
+        return services;
+    }
+
+    /// <summary>Đăng ký email OTP, quên mật khẩu, Google. Thiếu cấu hình → tính năng tự tắt (AUTH_NOT_READY), không giả lập.</summary>
+    public static IServiceCollection AddAuthV2(this IServiceCollection services, IConfiguration config)
+    {
+        services.AddHttpClient<ResendEmailService>(c => c.Timeout = TimeSpan.FromSeconds(30));
+        services.AddHttpClient<HttpGoogleKeyProvider>(c => c.Timeout = TimeSpan.FromSeconds(10));
+
+        services.AddSingleton<IEmailService>(sp =>
+        {
+            var o = sp.GetRequiredService<IOptions<EmailOptions>>().Value;
+            if (!o.Configured) return new UnconfiguredEmailService();
+            return o.Provider.ToLowerInvariant() switch
+            {
+                "smtp" => ActivatorUtilities.CreateInstance<SmtpEmailService>(sp),
+                "resend" => sp.GetRequiredService<ResendEmailService>(),
+                _ => new UnconfiguredEmailService(),
+            };
+        });
+        services.AddSingleton<EmailOutbox>();
+        services.AddSingleton<IEmailOutbox>(sp => sp.GetRequiredService<EmailOutbox>());
+        services.AddHostedService<EmailOutboxWorker>();
+
+        services.AddSingleton<IGoogleKeyProvider>(sp => sp.GetRequiredService<HttpGoogleKeyProvider>());
+        services.AddSingleton<IGoogleTokenVerifier, GoogleTokenVerifier>();
+        services.AddScoped<IAuthV2Service, AuthV2Service>();
+        services.AddHostedService<AuthChallengeCleanupService>();
         return services;
     }
 }

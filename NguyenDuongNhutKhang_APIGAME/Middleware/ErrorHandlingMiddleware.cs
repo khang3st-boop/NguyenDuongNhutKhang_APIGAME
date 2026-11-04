@@ -21,7 +21,7 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
         }
         catch (AppException ex)
         {
-            await ErrorWriter.WriteAsync(ctx, ex.Status, ex.Code, ex.Message);
+            await ErrorWriter.WriteAsync(ctx, ex.Status, ex.Code, ex.Message, ex.Fields, ex.RetryAfterSeconds);
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -53,11 +53,12 @@ public static class ErrorWriter
     public static ErrorResponse Build(HttpContext ctx, string code, string message, IReadOnlyList<FieldError>? fields = null) =>
         new(code, message, fields ?? [], DateTime.UtcNow, ctx.Request.Path);
 
-    public static async Task WriteAsync(HttpContext ctx, int status, string code, string message, IReadOnlyList<FieldError>? fields = null)
+    public static async Task WriteAsync(HttpContext ctx, int status, string code, string message, IReadOnlyList<FieldError>? fields = null, int? retryAfterSeconds = null)
     {
         if (ctx.Response.HasStarted) return;
         ctx.Response.Clear();
         ctx.Response.StatusCode = status;
+        if (retryAfterSeconds is > 0) ctx.Response.Headers.RetryAfter = retryAfterSeconds.Value.ToString();
         ctx.Response.ContentType = "application/json; charset=utf-8";
         await ctx.Response.WriteAsync(JsonSerializer.Serialize(Build(ctx, code, message, fields), Json));
     }

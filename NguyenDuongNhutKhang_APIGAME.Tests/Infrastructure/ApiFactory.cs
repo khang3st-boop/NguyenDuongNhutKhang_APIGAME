@@ -16,7 +16,7 @@ namespace NguyenDuongNhutKhang_APIGAME.Tests.Infrastructure;
 
 /// <summary>
 /// Chạy chính Program.cs trên database RIÊNG mỗi lần: LocalDB hoặc PostgreSQL qua GAMEHUB_TEST_POSTGRES,
-/// migrate bằng migration thật và giữ database khi xong để kiểm tra. Không đụng database phát triển hay Neon.
+/// migrate bằng migration thật và tự xoá database đó khi xong (GAMEHUB_TEST_KEEP_DB=1 để giữ). Không đụng database phát triển.
 /// </summary>
 public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
@@ -73,7 +73,49 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    async Task IAsyncLifetime.DisposeAsync() => await base.DisposeAsync();
+    async Task IAsyncLifetime.DisposeAsync()
+    {
+        await base.DisposeAsync();
+        await DropTestDatabaseAsync();
+    }
+
+    /// <summary>
+    /// Xoá đúng database ngẫu nhiên do chính factory này tạo (tên có tiền tố cố định) để không để lại database tồn đọng.
+    /// Đặt GAMEHUB_TEST_KEEP_DB=1 để giữ lại kiểm tra thủ công. Lỗi dọn dẹp chỉ cảnh báo, không làm hỏng test.
+    /// </summary>
+    private async Task DropTestDatabaseAsync()
+    {
+        const string prefix = "NguyenDuongNhutKhang_APIGAME_Test_";
+        if (Environment.GetEnvironmentVariable("GAMEHUB_TEST_KEEP_DB") == "1") return;
+        if (!DatabaseName.StartsWith(prefix, StringComparison.Ordinal) || DatabaseName.Length != prefix.Length + 10) return;
+        try
+        {
+            if (IsPostgres)
+            {
+                NpgsqlConnection.ClearAllPools();
+                var admin = new NpgsqlConnectionStringBuilder(ConnectionString) { Database = "postgres", Pooling = false };
+                await using var pg = new NpgsqlConnection(admin.ConnectionString);
+                await pg.OpenAsync();
+                await using var cmd = pg.CreateCommand();
+                cmd.CommandText = $"DROP DATABASE IF EXISTS \"{DatabaseName.ToLowerInvariant()}\" WITH (FORCE)";
+                await cmd.ExecuteNonQueryAsync();
+            }
+            else
+            {
+                Microsoft.Data.SqlClient.SqlConnection.ClearAllPools();
+                await using var sql = new Microsoft.Data.SqlClient.SqlConnection(
+                    @"Server=(localdb)\MSSQLLocalDB;Database=master;Trusted_Connection=True;TrustServerCertificate=True");
+                await sql.OpenAsync();
+                await using var cmd = sql.CreateCommand();
+                cmd.CommandText = $"IF DB_ID(N'{DatabaseName}') IS NOT NULL BEGIN ALTER DATABASE [{DatabaseName}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{DatabaseName}]; END";
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[test cleanup] không xoá được database test {DatabaseName}: {ex.GetType().Name}");
+        }
+    }
 
     public async Task<T> WithDbAsync<T>(Func<AppDbContext, Task<T>> work)
     {

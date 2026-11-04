@@ -21,6 +21,8 @@ services.AddOptions<JwtOptions>().Bind(builder.Configuration.GetSection(JwtOptio
         && System.Text.Encoding.UTF8.GetByteCount(o.Key) >= 32), "Production cần Jwt:Key riêng, tối thiểu 32 byte.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.Issuer) && !string.IsNullOrWhiteSpace(o.Audience), "JWT cần Issuer và Audience.")
     .ValidateOnStart();
+services.AddOptions<AuthOptions>().Bind(builder.Configuration.GetSection(AuthOptions.Section));
+services.AddOptions<EmailOptions>().Bind(builder.Configuration.GetSection(EmailOptions.Section));
 services.AddOptions<SeedOptions>().Bind(builder.Configuration.GetSection(SeedOptions.Section));
 services.AddSingleton(TimeProvider.System);
 
@@ -126,6 +128,7 @@ services.AddControllers()
 // ---------------------------------------------------------------- dịch vụ ứng dụng
 services.AddScoped<ITokenService, TokenService>();
 services.AddScoped<IAuthService, AuthService>();
+services.AddAuthV2(builder.Configuration);
 services.AddScoped<IUserService, UserService>();
 services.AddGameHubServices(builder.Configuration);
 
